@@ -19,14 +19,8 @@
   </header>
 
   <main>
-    <section class="intro" aria-labelledby="page-title">
-      <p class="eyebrow">DEVELOPER UTILITIES</p>
-      <h1 id="page-title">常用工具，專注於手邊的事。</h1>
-      <p>不需要帳號，所有資料只在你的瀏覽器中處理。</p>
-    </section>
-
-    <section class="tool-section" aria-labelledby="json-title">
-      <div class="section-heading"><div><p class="tool-number">01</p><h2 id="json-title">JSON 處理器</h2><p>格式化、壓縮並驗證 JSON 資料。</p></div><div id="json-status" class="status" aria-live="polite">等待輸入</div></div>
+    <section class="tool-section json-section" aria-labelledby="json-title">
+      <div class="section-heading"><div><h1 id="json-title">JSON 處理器</h1><p>格式化、壓縮並驗證 JSON 資料。</p></div><div id="json-status" class="status" aria-live="polite">等待輸入</div></div>
       <div class="tool-grid json-grid">
         <label class="editor-panel"><span>輸入</span><textarea id="json-input" spellcheck="false" placeholder='貼上 JSON，例如 {"name":"工具箱"}' aria-label="JSON 輸入"></textarea></label>
         <label class="editor-panel"><span>結果</span><textarea id="json-output" spellcheck="false" readonly placeholder="處理結果將顯示在這裡" aria-label="JSON 結果"></textarea></label>
