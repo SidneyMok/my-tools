@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="本機離線 HTML 即時預覽工具。" />
+  <title>HTML 即時預覽 | 工具箱</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html"><span class="brand-mark">&lt;/&gt;</span><span>工具箱</span></a>
+    <nav aria-label="工具導覽">
+      <a href="index.html">JSON</a>
+      <a class="active" href="html-preview.html" aria-current="page">HTML</a>
+      <a href="timestamp.html">Timestamp</a>
+    </nav>
+    <span class="local-note"><i></i>本機運行</span>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">DEVELOPER UTILITIES</p>
+      <h1 id="page-title">常用工具，專注於手邊的事。</h1>
+      <p>不需要帳號，所有資料只在你的瀏覽器中處理。</p>
+    </section>
+
+    <section class="tool-section" aria-labelledby="html-title">
+      <div class="section-heading"><div><p class="tool-number">02</p><h2 id="html-title">HTML 即時預覽</h2><p>在隔離環境中測試你的 HTML、CSS 和 JavaScript。</p></div><div class="status"><span class="preview-dot"></span>沙盒模式</div></div>
+      <div class="html-workspace">
+        <div class="code-side">
+          <div class="panel-top"><span>index.html</span><span>HTML</span></div>
+          <textarea id="html-input" spellcheck="false" aria-label="HTML 編輯器"><!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <style>
+      body { font-family: system-ui; padding: 32px; color: #17211f; }
+      h1 { color: #167d68; }
+    </style>
+  </head>
+  <body>
+    <h1>你好，世界！</h1>
+    <p>從這裡開始測試你的想法。</p>
+  </body>
+</html></textarea>
+        </div>
+        <div class="preview-side"><div class="panel-top"><span>預覽</span><span>隔離 iframe</span></div><iframe id="html-preview" title="HTML 即時預覽" sandbox="allow-scripts"></iframe></div>
+      </div>
+      <div class="action-row"><button class="primary" id="run-html">▶ 執行</button><button id="reset-html">↺ 重設</button><span class="action-spacer"></span><button id="open-preview">↗ 在新視窗開啟</button></div>
+    </section>
+  </main>
+  <footer>工具箱 · 資料不會離開你的裝置</footer>
+  <script src="app.js"></script>
+</body>
+</html>
