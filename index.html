@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="本機離線開發小工具：JSON、HTML 預覽與時間戳轉換。" />
+  <title>工具箱 | 開發日常</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#json"><span class="brand-mark">&lt;/&gt;</span><span>工具箱</span></a>
+    <nav aria-label="工具導覽">
+      <a class="active" href="#json">JSON</a>
+      <a href="#html">HTML</a>
+      <a href="#time">時間</a>
+    </nav>
+    <span class="local-note"><i></i>本機運行</span>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">DEVELOPER UTILITIES</p>
+      <h1 id="page-title">常用工具，專注於手邊的事。</h1>
+      <p>不需要帳號，所有資料只在你的瀏覽器中處理。</p>
+    </section>
+
+    <section class="tool-section" id="json" aria-labelledby="json-title">
+      <div class="section-heading"><div><p class="tool-number">01</p><h2 id="json-title">JSON 處理器</h2><p>格式化、壓縮並驗證 JSON 資料。</p></div><div id="json-status" class="status" aria-live="polite">等待輸入</div></div>
+      <div class="tool-grid json-grid">
+        <label class="editor-panel"><span>輸入</span><textarea id="json-input" spellcheck="false" placeholder='貼上 JSON，例如 {"name":"工具箱"}' aria-label="JSON 輸入"></textarea></label>
+        <label class="editor-panel"><span>結果</span><textarea id="json-output" spellcheck="false" readonly placeholder="處理結果將顯示在這裡" aria-label="JSON 結果"></textarea></label>
+      </div>
+      <p class="error-message" id="json-error" role="alert"></p>
+      <div class="action-row"><button class="primary" id="format-json">格式化</button><button id="minify-json">壓縮</button><span class="action-spacer"></span><button class="icon-button" id="copy-json" title="複製結果" aria-label="複製結果">⧉</button><button class="icon-button" id="clear-json" title="清除內容" aria-label="清除內容">×</button></div>
+    </section>
+
+    <section class="tool-section" id="html" aria-labelledby="html-title">
+      <div class="section-heading"><div><p class="tool-number">02</p><h2 id="html-title">HTML 即時預覽</h2><p>在隔離環境中測試你的 HTML、CSS 和 JavaScript。</p></div><div class="status"><span class="preview-dot"></span>沙盒模式</div></div>
+      <div class="html-workspace">
+        <div class="code-side">
+          <div class="panel-top"><span>index.html</span><span>HTML</span></div>
+          <textarea id="html-input" spellcheck="false" aria-label="HTML 編輯器"><!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <style>
+      body { font-family: system-ui; padding: 32px; color: #17211f; }
+      h1 { color: #167d68; }
+    </style>
+  </head>
+  <body>
+    <h1>你好，世界！</h1>
+    <p>從這裡開始測試你的想法。</p>
+  </body>
+</html></textarea>
+        </div>
+        <div class="preview-side"><div class="panel-top"><span>預覽</span><span>隔離 iframe</span></div><iframe id="html-preview" title="HTML 即時預覽" sandbox="allow-scripts"></iframe></div>
+      </div>
+      <div class="action-row"><button class="primary" id="run-html">▶ 執行</button><button id="reset-html">↺ 重設</button><span class="action-spacer"></span><button id="open-preview">↗ 在新視窗開啟</button></div>
+    </section>
+
+    <section class="tool-section timestamp-section" id="time" aria-labelledby="time-title">
+      <div class="section-heading"><div><p class="tool-number">03</p><h2 id="time-title">Unix 時間戳</h2><p>在 Unix 時間戳與本機日期時間之間轉換。</p></div></div>
+      <div class="timestamp-grid">
+        <div class="converter"><h3>時間戳 → 日期時間</h3><label>Unix 時間戳<input id="timestamp-input" inputmode="decimal" placeholder="例如 1721550600" /></label><div class="unit-toggle" role="group" aria-label="時間戳單位"><button class="selected" data-unit="seconds">秒</button><button data-unit="milliseconds">毫秒</button></div><button class="primary wide" id="convert-timestamp">轉換</button><output id="timestamp-result" class="result-box">輸入時間戳以開始</output></div>
+        <div class="converter"><h3>日期時間 → 時間戳</h3><label>本機日期時間<input id="datetime-input" type="datetime-local" step="0.001" /></label><button class="secondary wide" id="use-now">使用目前時間</button><button class="primary wide" id="convert-datetime">轉換</button><output id="datetime-result" class="result-box">選擇日期時間以開始</output></div>
+      </div>
+    </section>
+  </main>
+  <footer>工具箱 · 資料不會離開你的裝置</footer>
+  <script src="app.js"></script>
+</body>
+</html>
