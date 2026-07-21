@@ -26,9 +26,12 @@ TALOS receives the dispatcher output. For every line, TALOS sends the issue numb
 2. If the acceptance criteria are ambiguous, add a concise Issue comment, add `agent:needs-clarification`, remove `agent:in-progress`, and stop.
 3. Create one branch named `feat/issue-<number>-<slug>` or `fix/issue-<number>-<slug>`.
 4. Delegate implementation to `my-tools-frontend` and independent validation to `my-tools-qa`.
-5. Keep changes limited to the issue scope. Run relevant checks before creating a PR.
-6. Push the branch and open a PR into `main`. Its body must include `Resolves #<number>`, summary, verification, and QA result.
-7. Comment on the Issue with the PR URL and verification summary; add `agent:done`, remove `agent:in-progress`.
+5. Require `my-tools-qa` to complete an independent pre-PR code review against the Issue acceptance criteria and current `main`. The review must check correctness, regressions, maintainability, test coverage gaps, and mergeability with `main`.
+6. Treat all review findings as blocking. Send actionable findings to the frontend worker, apply and verify fixes, then have QA re-review the resulting diff. Do not open a PR until the review is clean or every finding is resolved with evidence.
+7. Verify the branch can merge with current `main` without conflicts, using a clean worktree or a non-destructive merge simulation. Record the command and result in the QA evidence.
+8. Keep changes limited to the issue scope. Run relevant checks before creating a PR.
+9. Push the branch and open a PR into `main`. Its body must include `Resolves #<number>`, summary, verification, code-review verdict, review findings/fixes, and QA result.
+10. Comment on the Issue with the PR URL and verification summary; add `agent:done`, remove `agent:in-progress`.
 
 ## Recovery
 
