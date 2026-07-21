@@ -4,7 +4,7 @@
 
 ## 使用方式
 
-直接以瀏覽器開啟 `index.html` 即可。若需要本機 HTTP 伺服器，可在此目錄執行：
+直接以瀏覽器開啟 `index.html` 即可。每項工具都有獨立頁面：`index.html`（JSON）、`html-preview.html`（HTML 預覽）與 `timestamp.html`（Unix 時間戳）。若需要本機 HTTP 伺服器，可在此目錄執行：
 
 ```sh
 python3 -m http.server 8080
