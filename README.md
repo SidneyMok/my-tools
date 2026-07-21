@@ -12,6 +12,10 @@ python3 -m http.server 8080
 
 然後開啟 `http://localhost:8080`。
 
+## 自動化開發流程
+
+在 GitHub 建立需求 Issue 後，補齊 acceptance criteria 並加上 `agent:ready` label。TALOS 每五分鐘會接管 Issue，交給 project leader 完成開發、QA 和 Pull Request。PR 仍必須由人工審核和 merge；merge 至 `main` 後 GitHub Pages 會自動重新發布。完整規則見 [自動化流程](docs/automation/issue-workflow.md)。
+
 ## 驗證重點
 
 - JSON：輸入有效 JSON 後可格式化、壓縮及複製；輸入不合法內容會顯示錯誤。
