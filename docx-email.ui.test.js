@@ -39,6 +39,20 @@ async function uploadFixture(page) {
   await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
 }
 
+test('DOCX page loads pinned tracked parser bundles locally, never from node_modules or an external origin', async () => {
+  await withPage(async ({ page, url }) => {
+    const requests = [];
+    page.on('request', (request) => requests.push(request.url()));
+    await page.goto(url);
+    assert.deepEqual(requests.filter((requestUrl) => /(?:jszip|mammoth)/i.test(requestUrl)).map((requestUrl) => new URL(requestUrl).pathname).sort(), [
+      '/vendor/jszip-3.10.1.min.js',
+      '/vendor/mammoth-1.11.0.browser.js'
+    ]);
+    assert.ok(requests.every((requestUrl) => new URL(requestUrl).origin === url));
+    assert.ok(requests.every((requestUrl) => !new URL(requestUrl).pathname.startsWith('/node_modules/')));
+  });
+});
+
 test('DOCX page emits one sanitized artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
@@ -81,6 +95,10 @@ test('all tool navigation includes every tool and the OOXML fidelity warning is 
     const html = await readFile(path.join(root, filename), 'utf8');
     for (const target of navTargets) assert.match(html, new RegExp(`href="${target}"`));
   }
+  const docxPage = await readFile(path.join(root, 'docx-email.html'), 'utf8');
+  assert.match(docxPage, /src="vendor\/jszip-3\.10\.1\.min\.js"/);
+  assert.match(docxPage, /src="vendor\/mammoth-1\.11\.0\.browser\.js"/);
+  assert.doesNotMatch(docxPage, /node_modules|https?:\/\//);
   const pageScript = await readFile(path.join(root, 'docx-email-page.js'), 'utf8');
   assert.match(pageScript, /OOXML 執行屬性/);
   assert.match(pageScript, /色彩、字級與底線/);
