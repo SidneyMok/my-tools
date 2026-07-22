@@ -1,0 +1,12 @@
+{
+  "name": "my-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "test:layout": "node --test network.layout.test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}
