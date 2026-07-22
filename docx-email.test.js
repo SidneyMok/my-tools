@@ -28,6 +28,8 @@ test('converts actual DOCX fixture with color, size, underline and core email fo
   assert.match(html, /<br>/);
   assert.match(html, /href="https:\/\/example.com"/);
   assert.match(html, /<table/);
+  assert.match(html, /<ul><li[^>]*>項目符號清單一<\/li><li[^>]*>項目符號清單二<\/li><\/ul>/);
+  assert.match(html, /<ol><li[^>]*>編號清單一<\/li><li[^>]*>編號清單二<\/li><\/ol>/);
 });
 
 test('sanitizer allowlists conservative email-safe styles and link schemes', () => {

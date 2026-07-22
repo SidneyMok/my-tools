@@ -77,16 +77,31 @@ function paragraphHtml(paragraph, links) {
   let content = ''; for (const node of Array.from(paragraph.childNodes).filter((item) => item.nodeType === 1)) { if (node.localName === 'r') content += runHtml(node); else if (node.localName === 'hyperlink') { const href = links.get(node.getAttributeNS(REL_NS, 'id')); const runs = children(node, 'r').map(runHtml).join(''); content += safeUrl(href) ? `<a href="${esc(href)}">${runs}</a>` : runs; } }
   return content || '<br>';
 }
+function numberingTypes(numberingXml) {
+  const abstractTypes = new Map();
+  for (const abstractNum of Array.from(numberingXml.getElementsByTagNameNS(WORD_NS, 'abstractNum'))) {
+    const levels = new Map();
+    for (const level of children(abstractNum, 'lvl')) levels.set(attr(level, 'ilvl') || '0', attr(child(level, 'numFmt'), 'val'));
+    abstractTypes.set(attr(abstractNum, 'abstractNumId'), levels);
+  }
+  const types = new Map();
+  for (const num of Array.from(numberingXml.getElementsByTagNameNS(WORD_NS, 'num'))) {
+    types.set(attr(num, 'numId'), abstractTypes.get(attr(child(num, 'abstractNumId'), 'val')) || new Map());
+  }
+  return types;
+}
 export async function renderDocxXml(arrayBuffer) {
   const zipApi = globalThis.JSZip || (await import('jszip')).default;
   const zip = await zipApi.loadAsync(arrayBuffer); const xml = await zip.file('word/document.xml')?.async('string');
   if (!xml) throw new Error('找不到 DOCX 文件內容，檔案可能已損毀或加密。');
   const relsText = await zip.file('word/_rels/document.xml.rels')?.async('string') || '<Relationships/>';
+  const numberingText = await zip.file('word/numbering.xml')?.async('string') || '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>';
   const XmlParser = globalThis.DOMParser || (await import('@xmldom/xmldom')).DOMParser; const parser = new XmlParser(); const documentXml = parser.parseFromString(xml, 'application/xml'); const relsXml = parser.parseFromString(relsText, 'application/xml'); const links = new Map(Array.from(relsXml.getElementsByTagName('Relationship')).map((item) => [item.getAttribute('Id'), item.getAttribute('Target')]));
+  const listTypes = numberingTypes(parser.parseFromString(numberingText, 'application/xml'));
   const blocks = []; let list = null;
   const flush = () => { if (list) { blocks.push(`<${list.type}>${list.items.join('')}</${list.type}>`); list = null; } };
   for (const node of Array.from(documentXml.getElementsByTagNameNS(WORD_NS, 'body')[0].childNodes).filter((item) => item.nodeType === 1)) {
-    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const type = num ? (attr(child(num, 'numId'), 'val') === '0' ? 'ul' : 'ol') : null; const value = paragraphHtml(node, links); if (type) { if (!list || list.type !== type) { flush(); list = { type, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(`<p>${value}</p>`); } }
+    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = paragraphHtml(node, links); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(`<p>${value}</p>`); } }
     else if (node.localName === 'tbl') { flush(); blocks.push(`<table><tbody>${children(node, 'tr').map((row) => `<tr>${children(row, 'tc').map((cell) => `<td>${children(cell, 'p').map((p) => paragraphHtml(p, links)).join('<br>')}</td>`).join('')}</tr>`).join('')}</tbody></table>`); }
   } flush(); return blocks.join('');
 }

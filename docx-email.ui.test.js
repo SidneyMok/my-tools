@@ -62,7 +62,11 @@ test('DOCX page emits one sanitized artifact to preview, clipboard, and UTF-8 do
     assert.match(source, /color:#FF0000/i);
     assert.match(source, /font-size:16pt/i);
     assert.match(source, /<u>/i);
+    assert.match(source, /<ul><li[^>]*>項目符號清單一<\/li><li[^>]*>項目符號清單二<\/li><\/ul>/);
+    assert.match(source, /<ol><li[^>]*>編號清單一<\/li><li[^>]*>編號清單二<\/li><\/ol>/);
     assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
+    assert.equal(await page.locator('#docx-preview').contentFrame().locator('ul > li').count(), 2);
+    assert.equal(await page.locator('#docx-preview').contentFrame().locator('ol > li').count(), 2);
     await page.locator('#copy-docx-html').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
     const download = page.waitForEvent('download');
