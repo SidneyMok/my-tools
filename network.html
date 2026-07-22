@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="查詢目前公網 IP 與單一 IPv4 或 IPv6 的網路資訊。" />
+  <title>Network IP 查詢 | 工具箱</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html"><span class="brand-mark">&lt;/&gt;</span><span>工具箱</span></a>
+    <nav aria-label="工具導覽">
+      <a href="index.html">JSON</a>
+      <a href="html-preview.html">HTML</a>
+      <a href="timestamp.html">Timestamp</a>
+      <a class="active" href="network.html" aria-current="page">Network</a>
+    </nav>
+    <span class="local-note"><i></i>本機運行</span>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">NETWORK UTILITIES</p>
+      <h1 id="page-title">公網 IP 與網路資訊查詢。</h1>
+      <p>快速確認目前網路，或查詢單一 IPv4、IPv6 位址。</p>
+    </section>
+
+    <section class="tool-section network-section" aria-labelledby="current-title">
+      <div class="section-heading"><div><p class="tool-number">04</p><h2 id="current-title">目前公網 IP</h2><p>依瀏覽器的連線取得目前對外顯示的位址。</p></div><div id="current-ip-status" class="status" aria-live="polite">準備中</div></div>
+      <div id="current-ip-result" class="network-result" aria-live="polite" hidden></div>
+      <button id="retry-current-ip" class="secondary" hidden>重新取得</button>
+    </section>
+
+    <section class="tool-section network-section" aria-labelledby="lookup-title">
+      <div class="section-heading"><div><p class="tool-number">IP LOOKUP</p><h2 id="lookup-title">查詢指定 IP</h2><p>支援單一 IPv4 或 IPv6 位址。</p></div><div id="lookup-status" class="status" aria-live="polite">等待查詢</div></div>
+      <form id="ip-lookup-form" class="ip-lookup-form" novalidate>
+        <label for="ip-lookup-input">IP 位址</label>
+        <div class="lookup-controls"><input id="ip-lookup-input" name="ip" inputmode="text" autocomplete="off" spellcheck="false" placeholder="例如 8.8.8.8 或 2606:4700:4700::1111" /><button class="primary" type="submit">查詢</button></div>
+        <p id="ip-lookup-error" class="error-message" role="alert"></p>
+      </form>
+      <div id="lookup-result" class="network-result" aria-live="polite" hidden></div>
+      <button id="retry-lookup" class="secondary" hidden>重新查詢</button>
+      <p class="location-disclosure">歸屬地資料為 IP 資料庫推估，僅供參考，不能代表精確實體位置。</p>
+    </section>
+  </main>
+  <footer>工具箱 · 查詢內容不會儲存在此工具中</footer>
+  <script type="module" src="network.js"></script>
+</body>
+</html>
