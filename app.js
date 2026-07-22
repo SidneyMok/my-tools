@@ -26,7 +26,7 @@
     $('run-html').addEventListener('click', runPreview);
     $('reset-html').addEventListener('click', () => { htmlInput.value = initialHtml; runPreview(); });
     $('open-preview').addEventListener('click', () => {
-      const previewUrl = URL.createObjectURL(new Blob([htmlInput.value], { type: 'text/html' }));
+      const previewUrl = URL.createObjectURL(new Blob([htmlInput.value], { type: 'text/html;charset=UTF-8' }));
       window.open(previewUrl, '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(previewUrl), 60000);
     });
