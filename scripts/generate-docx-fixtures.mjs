@@ -1,0 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import JSZip from 'jszip';
+const out = path.resolve('fixtures'); await mkdir(out, { recursive: true });
+const zip = new JSZip();
+zip.file('[Content_Types].xml', `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+zip.folder('_rels').file('.rels', `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+zip.folder('word').file('document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:rPr><w:color w:val="FF0000"/><w:sz w:val="32"/><w:u w:val="single"/></w:rPr><w:t>紅色 16pt 底線</w:t></w:r><w:r><w:br/></w:r><w:r><w:rPr><w:b/><w:i/><w:strike/><w:color w:val="00AA00"/></w:rPr><w:t>粗斜刪除線</w:t></w:r><w:hyperlink r:id="rId1"><w:r><w:t>安全連結</w:t></w:r></w:hyperlink></w:p><w:p/><w:tbl><w:tr><w:tc><w:p><w:r><w:t>表格欄位</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:sectPr/></w:body></w:document>`);
+zip.folder('word').folder('_rels').file('document.xml.rels', `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/></Relationships>`);
+await writeFile(path.join(out, 'email-fidelity.docx'), await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
