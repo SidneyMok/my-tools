@@ -98,8 +98,11 @@ export async function convertDocx(file, mammoth) {
     // Mammoth provides compatibility diagnostics and basic document semantics. Its output omits
     // arbitrary run color/font-size (and defaults to omitting underline), so the narrow OOXML
     // run-properties renderer above deliberately supplies required color/size/underline fidelity.
-    const mammothResult = mammoth ? await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() }, { styleMap: ['u => u'] }) : { messages: [] };
-    const html = await renderDocxXml(await file.arrayBuffer());
+    const arrayBuffer = await file.arrayBuffer();
+    // Read the required document part first so missing/corrupt OOXML receives a useful local error,
+    // rather than a parser-specific diagnostic from optional compatibility analysis.
+    const html = await renderDocxXml(arrayBuffer);
+    const mammothResult = mammoth ? await mammoth.convertToHtml({ arrayBuffer }, { styleMap: ['u => u'] }) : { messages: [] };
     return { html: sanitizeEmailHtml(html), warnings: mammothResult.messages.map((item) => item.message) };
   } catch (error) { throw new Error(`無法轉換 DOCX：${error.message || '檔案可能已損毀、受密碼保護或包含不支援的內容。'}`); }
 }
