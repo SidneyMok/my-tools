@@ -20,14 +20,8 @@
   </header>
 
   <main>
-    <section class="intro" aria-labelledby="page-title">
-      <p class="eyebrow">DEVELOPER UTILITIES</p>
-      <h1 id="page-title">常用工具，專注於手邊的事。</h1>
-      <p>不需要帳號，所有資料只在你的瀏覽器中處理。</p>
-    </section>
-
     <section class="tool-section timestamp-section" aria-labelledby="time-title">
-      <div class="section-heading"><div><p class="tool-number">03</p><h2 id="time-title">Unix 時間戳</h2><p>在 Unix 時間戳與本機日期時間之間轉換。</p></div></div>
+      <div class="section-heading"><div><h1 id="time-title">Unix 時間戳</h1><p>在 Unix 時間戳與本機日期時間之間轉換。</p></div></div>
       <div class="timestamp-grid">
         <div class="converter"><h3>時間戳 → 日期時間</h3><label>Unix 時間戳<input id="timestamp-input" inputmode="decimal" placeholder="例如 1721550600" /></label><div class="unit-toggle" role="group" aria-label="時間戳單位"><button class="selected" data-unit="seconds">秒</button><button data-unit="milliseconds">毫秒</button></div><button class="primary wide" id="convert-timestamp">轉換</button><output id="timestamp-result" class="result-box">輸入時間戳以開始</output></div>
         <div class="converter"><h3>日期時間 → 時間戳</h3><label>本機日期時間<input id="datetime-input" type="datetime-local" step="0.001" /></label><button class="secondary wide" id="use-now">使用目前時間</button><button class="primary wide" id="convert-datetime">轉換</button><output id="datetime-result" class="result-box">選擇日期時間以開始</output></div>
