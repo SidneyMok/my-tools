@@ -26,6 +26,49 @@ const safeStyleValue = (property, value) => {
 };
 const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).filter(([property, styleValue]) => allowedStyleProperties.has(property?.trim().toLowerCase()) && safeStyleValue(property.trim().toLowerCase(), styleValue || '')).map(([property, styleValue]) => `${property.trim().toLowerCase()}:${styleValue.trim()}`).join(';');
 const esc = (text) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
+const structuralTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
+const formattingContainers = new Set(['ol', 'ul', 'table', 'thead', 'tbody', 'tr']);
+
+// Tokenize the already-sanitized, conservative HTML subset without rewriting text or
+// attribute values. A DOM serializer would add whitespace to mixed inline content;
+// this small syntax-aware scanner only inserts whitespace at structural boundaries.
+function htmlTokens(html) {
+  const tokens = []; let cursor = 0;
+  while (cursor < html.length) {
+    if (html[cursor] !== '<') { const next = html.indexOf('<', cursor); const end = next === -1 ? html.length : next; tokens.push({ type: 'text', value: html.slice(cursor, end) }); cursor = end; continue; }
+    let quote = ''; let end = cursor + 1;
+    for (; end < html.length; end += 1) { const char = html[end]; if (quote) { if (char === quote) quote = ''; } else if (char === '"' || char === "'") quote = char; else if (char === '>') break; }
+    if (end === html.length) { tokens.push({ type: 'text', value: html.slice(cursor) }); break; }
+    const value = html.slice(cursor, end + 1); const match = /^<\s*(\/)?\s*([a-z0-9-]+)/i.exec(value);
+    tokens.push(match ? { type: match[1] ? 'close' : /\/\s*>$/.test(value) ? 'void' : 'open', name: match[2].toLowerCase(), value } : { type: 'text', value }); cursor = end + 1;
+  }
+  return tokens;
+}
+
+export function prettyPrintEmailHtml(html) {
+  const output = []; const stack = []; let depth = 0; let atLineStart = true; let lastWasStructuralClose = false;
+  const write = (value) => { output.push(value); atLineStart = value.endsWith('\n'); };
+  const line = (indent) => {
+    const padding = '  '.repeat(indent); const previous = output[output.length - 1] || '';
+    if (/(?:^|\n) *$/.test(previous)) output[output.length - 1] = previous.replace(/ *$/, padding);
+    else write(`\n${padding}`);
+    atLineStart = false;
+  };
+  for (const token of htmlTokens(html)) {
+    if (token.type === 'text') { if (!(formattingContainers.has(stack.at(-1)) && /[\n\r]/.test(token.value) && /^\s*$/.test(token.value))) write(token.value); lastWasStructuralClose = false; continue; }
+    const isPre = token.name === 'pre' || stack.includes('pre');
+    if (isPre) { write(token.value); if (token.type === 'open') stack.push(token.name); if (token.type === 'close') stack.pop(); continue; }
+    const structural = structuralTags.has(token.name);
+    if (token.type === 'close') {
+      if (structural) { depth = Math.max(0, depth - 1); if (lastWasStructuralClose || formattingContainers.has(token.name)) line(depth); }
+      write(token.value); stack.pop(); lastWasStructuralClose = structural; continue;
+    }
+    if (structural) line(depth);
+    write(token.value); if (token.type === 'open') stack.push(token.name); if (structural) depth += 1; lastWasStructuralClose = false;
+  }
+  return output.join('');
+}
+
 const children = (node, name) => Array.from(node?.childNodes || []).filter((child) => child.nodeType === 1 && child.localName === name);
 const child = (node, name) => children(node, name)[0];
 const attr = (node, name) => node?.getAttributeNS(WORD_NS, name) ?? node?.getAttribute(`w:${name}`) ?? node?.getAttribute(name);
@@ -39,7 +82,7 @@ export function validateDocxFile(file) {
 export async function assertDocxSignature(file) { const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer()); return bytes.length === 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04; }
 
 export function sanitizeEmailHtml(dirty) {
-  if (typeof DOMParser === 'undefined') return dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed)\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; });
+  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed)\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
   for (const element of [...doc.body.querySelectorAll('*')]) {
     const tag = element.tagName.toLowerCase();
@@ -56,7 +99,7 @@ export function sanitizeEmailHtml(dirty) {
   for (const element of [...doc.body.querySelectorAll('p, li, td, th')]) if (!element.getAttribute('style')) element.setAttribute('style', emailStyle);
   for (const table of doc.body.querySelectorAll('table')) table.setAttribute('style', 'border-collapse:collapse;width:100%;' + emailStyle);
   for (const cell of doc.body.querySelectorAll('td, th')) cell.setAttribute('style', (cell.getAttribute('style') || emailStyle) + 'border:1px solid #dce4df;padding:8px;vertical-align:top;');
-  return doc.body.innerHTML.trim();
+  return prettyPrintEmailHtml(doc.body.innerHTML.trim());
 }
 
 function runHtml(run) {
@@ -118,6 +161,6 @@ export async function convertDocx(file, mammoth) {
     // rather than a parser-specific diagnostic from optional compatibility analysis.
     const html = await renderDocxXml(arrayBuffer);
     const mammothResult = mammoth ? await mammoth.convertToHtml({ arrayBuffer }, { styleMap: ['u => u'] }) : { messages: [] };
-    return { html: sanitizeEmailHtml(html), warnings: mammothResult.messages.map((item) => item.message) };
+    return { html: prettyPrintEmailHtml(sanitizeEmailHtml(html)), warnings: mammothResult.messages.map((item) => item.message) };
   } catch (error) { throw new Error(`無法轉換 DOCX：${error.message || '檔案可能已損毀、受密碼保護或包含不支援的內容。'}`); }
 }
