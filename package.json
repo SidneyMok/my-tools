@@ -7,6 +7,10 @@
     "test:layout": "node --test network.layout.test.js"
   },
   "devDependencies": {
+    "@xmldom/xmldom": "^0.9.10",
     "playwright": "1.57.0"
+  },
+  "dependencies": {
+    "mammoth": "^1.11.0"
   }
 }
