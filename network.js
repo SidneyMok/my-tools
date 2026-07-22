@@ -37,7 +37,6 @@ async function requestIp(ip) {
   } catch {
     throw new Error('目前無法連線至 IP 查詢服務，請檢查網路後再試。');
   }
-
   let payload;
   try {
     payload = await response.json();
@@ -74,68 +73,51 @@ function setStatus(element, text, state = '') {
 }
 
 function initialiseNetworkTool() {
-  const currentStatus = document.getElementById('current-ip-status');
-  if (!currentStatus) return;
+  const status = document.getElementById('ip-status');
+  if (!status) return;
+  const form = document.getElementById('ip-lookup-form');
+  const input = document.getElementById('ip-lookup-input');
+  const error = document.getElementById('ip-lookup-error');
+  const result = document.getElementById('ip-result');
+  const retry = document.getElementById('retry-ip');
+  let activeQuery = '';
+  let requestVersion = 0;
 
-  const currentResult = document.getElementById('current-ip-result');
-  const currentRetry = document.getElementById('retry-current-ip');
-  const lookupForm = document.getElementById('ip-lookup-form');
-  const lookupInput = document.getElementById('ip-lookup-input');
-  const lookupError = document.getElementById('ip-lookup-error');
-  const lookupStatus = document.getElementById('lookup-status');
-  const lookupResult = document.getElementById('lookup-result');
-  const lookupRetry = document.getElementById('retry-lookup');
-  let latestLookup = 0;
-
-  async function loadCurrentIp() {
-    currentResult.hidden = true;
-    currentRetry.hidden = true;
-    setStatus(currentStatus, '正在取得目前公網 IP…', 'loading');
-    try {
-      const data = await requestIp('');
-      renderResult(currentResult, data);
-      setStatus(currentStatus, '已更新', 'success');
-    } catch (error) {
-      setStatus(currentStatus, error.message, 'error');
-      currentRetry.hidden = false;
-    }
-  }
-
-  async function lookupIp(ip) {
-    const requestId = ++latestLookup;
-    lookupResult.hidden = true;
-    lookupRetry.hidden = true;
-    setStatus(lookupStatus, '正在查詢…', 'loading');
+  async function runQuery(ip) {
+    const version = ++requestVersion;
+    activeQuery = ip;
+    result.hidden = true;
+    retry.hidden = true;
+    setStatus(status, ip ? '正在查詢…' : '正在取得目前公網 IP…', 'loading');
     try {
       const data = await requestIp(ip);
-      if (requestId !== latestLookup) return;
-      renderResult(lookupResult, data);
-      setStatus(lookupStatus, '查詢完成', 'success');
-    } catch (error) {
-      if (requestId !== latestLookup) return;
-      setStatus(lookupStatus, error.message, 'error');
-      lookupRetry.hidden = false;
+      if (version !== requestVersion) return;
+      renderResult(result, data);
+      setStatus(status, ip ? '查詢完成' : '已更新', 'success');
+    } catch (requestError) {
+      if (version !== requestVersion) return;
+      setStatus(status, requestError.message, 'error');
+      retry.hidden = false;
     }
   }
 
-  currentRetry.addEventListener('click', loadCurrentIp);
-  lookupForm.addEventListener('submit', (event) => {
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
-    const ip = lookupInput.value.trim();
-    lookupError.textContent = '';
-    if (!isValidIp(ip)) {
-      ++latestLookup;
-      lookupResult.hidden = true;
-      lookupRetry.hidden = true;
-      lookupError.textContent = '請輸入有效的 IPv4 或 IPv6 位址。';
-      setStatus(lookupStatus, '輸入格式錯誤', 'error');
-      lookupInput.focus();
+    const ip = input.value.trim();
+    error.textContent = '';
+    if (ip && !isValidIp(ip)) {
+      ++requestVersion;
+      result.hidden = true;
+      retry.hidden = true;
+      error.textContent = '請輸入有效的 IPv4 或 IPv6 位址。';
+      setStatus(status, '輸入格式錯誤', 'error');
+      input.focus();
       return;
     }
-    lookupIp(ip);
+    runQuery(ip);
   });
-  lookupRetry.addEventListener('click', () => lookupIp(lookupInput.value.trim()));
-  loadCurrentIp();
+  retry.addEventListener('click', () => runQuery(activeQuery));
+  runQuery('');
 }
 
 if (typeof document !== 'undefined') initialiseNetworkTool();
