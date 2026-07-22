@@ -19,5 +19,3 @@ Describe the expected user-facing behaviour.
 ## Notes
 
 Add examples, screenshots, constraints, or implementation hints.
-
-> Add the `agent:ready` label only when the issue is sufficiently specified for autonomous implementation.
