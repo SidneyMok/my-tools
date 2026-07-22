@@ -53,6 +53,20 @@ test('docx email loads pinned tracked parser bundles locally, never from node_mo
   });
 });
 
+test('docx email browser DOMParser sanitizer is byte-idempotent for default, table, and cell styles', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const results = await page.evaluate(async () => {
+      const { sanitizeEmailHtml } = await import('./docx-email.js');
+      return ['<p>test</p>', '<table><tbody><tr><td>test</td></tr></tbody></table>'].map((input) => {
+        const first = sanitizeEmailHtml(input);
+        return { first, second: sanitizeEmailHtml(first) };
+      });
+    });
+    for (const { first, second } of results) assert.equal(second, first);
+  });
+});
+
 test('docx email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);

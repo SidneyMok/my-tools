@@ -3,7 +3,7 @@ const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
 const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img']);
-const emailStyle = 'font-family:Arial,Helvetica,"PingFang TC","Microsoft JhengHei",sans-serif;font-size:14px;line-height:1.6;color:#17211f;';
+const emailStyle = 'font-family:Arial,Helvetica,"PingFang TC","Microsoft JhengHei",sans-serif;font-size:14px;line-height:1.6;color:#17211f';
 const allowedStyleProperties = new Set(['color', 'font-size', 'font-family', 'line-height', 'text-decoration', 'font-weight', 'font-style', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
@@ -97,8 +97,11 @@ export function sanitizeEmailHtml(dirty) {
     if (tag === 'a' && element.hasAttribute('href')) { element.setAttribute('target', '_blank'); element.setAttribute('rel', 'noopener noreferrer'); }
   }
   for (const element of [...doc.body.querySelectorAll('p, li, td, th')]) if (!element.getAttribute('style')) element.setAttribute('style', emailStyle);
-  for (const table of doc.body.querySelectorAll('table')) table.setAttribute('style', 'border-collapse:collapse;width:100%;' + emailStyle);
-  for (const cell of doc.body.querySelectorAll('td, th')) cell.setAttribute('style', (cell.getAttribute('style') || emailStyle) + 'border:1px solid #dce4df;padding:8px;vertical-align:top;');
+  for (const table of doc.body.querySelectorAll('table')) table.setAttribute('style', `border-collapse:collapse;width:100%;${emailStyle}`);
+  for (const cell of doc.body.querySelectorAll('td, th')) {
+    const existing = (cell.getAttribute('style') || emailStyle).split(';').filter((declaration) => !/^(?:border|padding|vertical-align):/i.test(declaration));
+    cell.setAttribute('style', `${existing.join(';')};border:1px solid #dce4df;padding:8px;vertical-align:top`);
+  }
   return prettyPrintEmailHtml(doc.body.innerHTML.trim());
 }
 
