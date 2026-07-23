@@ -120,6 +120,26 @@ test('Docx Email catalog is compact by default, expands accessibly, and search r
   });
 });
 
+test('Docx Email expanded catalog does not stretch the preview panel or displace it on mobile', async () => {
+  await withPage(async ({ page, url }) => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport); await page.goto(url); await uploadFixture(page);
+      await page.locator('#toggle-variable-catalog').click();
+      const geometry = await page.evaluate(() => {
+        const workspace = document.querySelector('.docx-workspace').getBoundingClientRect();
+        const code = document.querySelector('.code-side').getBoundingClientRect();
+        const preview = document.querySelector('.preview-side').getBoundingClientRect();
+        const iframe = document.querySelector('#docx-preview').getBoundingClientRect();
+        return { workspaceHeight: workspace.height, codeHeight: code.height, previewHeight: preview.height, previewTop: preview.top, workspaceTop: workspace.top, iframeHeight: iframe.height };
+      });
+      assert.ok(geometry.previewHeight < 500, `${viewport.width}px preview should retain its intrinsic height, got ${geometry.previewHeight}`);
+      assert.ok(geometry.iframeHeight < 450, `${viewport.width}px iframe should not stretch with catalog, got ${geometry.iframeHeight}`);
+      if (viewport.width > 720) assert.ok(Math.abs(geometry.previewTop - geometry.workspaceTop) < 2, 'desktop preview should remain alongside the editor');
+      else assert.ok(geometry.previewTop < geometry.workspaceTop + 900, 'mobile preview should follow the editor before the expanded catalog grows excessively');
+    }
+  });
+});
+
 test('Docx Email inserts literal variables over selection and keeps edited artifact parity', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
