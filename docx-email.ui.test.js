@@ -95,6 +95,96 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
   });
 });
 
+test('Docx Email catalog is compact by default, expands accessibly, and search reveals later groups', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const catalog = page.locator('#variable-list'); const toggle = page.locator('#toggle-variable-catalog');
+    assert.equal(await catalog.getAttribute('data-expanded'), 'false');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(await toggle.getAttribute('aria-controls'), 'variable-list');
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['保單與繳費']);
+    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 23);
+    assert.equal(await catalog.evaluate((element) => getComputedStyle(element).overflowY), 'visible');
+    await toggle.click();
+    assert.equal(await catalog.getAttribute('data-expanded'), 'true');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 105);
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['保單與繳費', '投保人與受保人', '保險公司與產品', '銷售與行政', '簽單員與通知', '日期與狀態']);
+    await page.getByRole('button', { name: '收合變數' }).click();
+    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 23);
+    await page.locator('#variable-search').fill('機器人是否更新');
+    assert.equal(await catalog.getAttribute('data-expanded'), 'false');
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['日期與狀態']);
+    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 1);
+    assert.match(await page.getByRole('button', { name: /機器人是否更新.*robotUpdate/ }).textContent(), /唯讀/);
+  });
+});
+
+test('Docx Email expanded catalog does not stretch the preview panel or displace it on mobile', async () => {
+  await withPage(async ({ page, url }) => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport); await page.goto(url); await uploadFixture(page);
+      await page.locator('#toggle-variable-catalog').click();
+      const geometry = await page.evaluate(() => {
+        const workspace = document.querySelector('.docx-workspace').getBoundingClientRect();
+        const code = document.querySelector('.code-side').getBoundingClientRect();
+        const preview = document.querySelector('.preview-side').getBoundingClientRect();
+        const iframe = document.querySelector('#docx-preview').getBoundingClientRect();
+        return { workspaceHeight: workspace.height, codeHeight: code.height, previewHeight: preview.height, previewTop: preview.top, workspaceTop: workspace.top, iframeHeight: iframe.height };
+      });
+      assert.ok(geometry.previewHeight < 500, `${viewport.width}px preview should retain its intrinsic height, got ${geometry.previewHeight}`);
+      assert.ok(geometry.iframeHeight < 450, `${viewport.width}px iframe should not stretch with catalog, got ${geometry.iframeHeight}`);
+      if (viewport.width > 720) assert.ok(Math.abs(geometry.previewTop - geometry.workspaceTop) < 2, 'desktop preview should remain alongside the editor');
+      else assert.ok(geometry.previewTop < geometry.workspaceTop + 900, 'mobile preview should follow the editor before the expanded catalog grows excessively');
+    }
+  });
+});
+
+test('Docx Email inserts literal variables over selection and keeps edited artifact parity', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    await uploadFixture(page);
+    await page.locator('#docx-source').evaluate((textarea) => { textarea.value = 'before REMOVE after'; textarea.selectionStart = 7; textarea.selectionEnd = 13; textarea.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.getByRole('button', { name: /保單編號.*policyId/ }).click();
+    const source = await page.locator('#docx-source').inputValue();
+    assert.equal(source, 'before ${policyId} after');
+    assert.deepEqual(await page.locator('#docx-source').evaluate((textarea) => ({ focused: document.activeElement === textarea, start: textarea.selectionStart, end: textarea.selectionEnd })), { focused: true, start: 18, end: 18 });
+    assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
+    await page.locator('#copy-docx-html').click();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
+    const download = page.waitForEvent('download'); await page.locator('#download-docx-html').click();
+    const bytes = await (await download).createReadStream().then(async (stream) => Buffer.concat(await (async () => { const chunks = []; for await (const chunk of stream) chunks.push(chunk); return chunks; })()));
+    assert.equal(bytes.toString('utf8'), source);
+  });
+});
+
+test('Docx Email persists valid custom variables and protects built-ins', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    await page.locator('.custom-variable-manager').evaluate((details) => { details.open = true; });
+    await page.locator('#custom-variable-label').fill('我的欄位'); await page.locator('#custom-variable-field').fill('myField'); await page.locator('#custom-variable-form').evaluate((form) => form.requestSubmit());
+    assert.equal(await page.locator('[data-variable-kind="custom"]').count(), 1);
+    assert.match(await page.locator('#custom-variable-list').textContent(), /我的欄位/);
+    await page.reload();
+    assert.equal(await page.locator('[data-variable-kind="custom"]').count(), 1);
+    await page.locator('.custom-variable-manager').evaluate((details) => { details.open = true; });
+    await page.getByRole('button', { name: '編輯 我的欄位' }).click(); await page.locator('#custom-variable-label').fill('更新欄位'); await page.locator('#custom-variable-field').fill('myFieldRenamed'); await page.locator('#custom-variable-form').evaluate((form) => form.requestSubmit());
+    assert.equal(await page.locator('[data-variable-field="myFieldRenamed"]').count(), 1);
+    assert.match(await page.locator('#custom-variable-list').textContent(), /更新欄位/);
+    await page.locator('#custom-variable-label').fill('重複欄位'); await page.locator('#custom-variable-field').fill('MYFIELDRENAMED'); await page.locator('#custom-variable-form').evaluate((form) => { form.noValidate = true; form.requestSubmit(); });
+    assert.match(await page.locator('#custom-variable-error').textContent(), /未重複/);
+    await page.locator('#custom-variable-label').fill('壞欄位'); await page.locator('#custom-variable-field').fill('not valid'); await page.locator('#custom-variable-form').evaluate((form) => { form.noValidate = true; form.requestSubmit(); });
+    assert.match(await page.locator('#custom-variable-error').textContent(), /未重複/);
+    await page.locator('#custom-variable-field').fill('policyId'); await page.locator('#custom-variable-form').evaluate((form) => { form.noValidate = true; form.requestSubmit(); });
+    assert.match(await page.locator('#custom-variable-error').textContent(), /未重複/);
+    assert.equal(await page.locator('[data-variable-kind="builtin"][data-variable-field="policyId"]').count(), 1);
+    assert.equal(await page.locator('[aria-label="刪除 保單編號"]').count(), 0);
+    await page.getByRole('button', { name: '刪除 更新欄位' }).click();
+    assert.equal(await page.locator('[data-variable-kind="custom"]').count(), 0);
+    await page.reload(); assert.equal(await page.locator('[data-variable-kind="custom"]').count(), 0);
+  });
+});
+
 test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over-limit feedback', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
