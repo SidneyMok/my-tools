@@ -3,7 +3,6 @@ const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
 const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img']);
-const emailStyle = 'font-family:Arial,Helvetica,"PingFang TC","Microsoft JhengHei",sans-serif;font-size:14px;line-height:1.6;color:#17211f';
 const allowedStyleProperties = new Set(['color', 'font-size', 'font-family', 'line-height', 'text-decoration', 'font-weight', 'font-style', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
@@ -24,7 +23,16 @@ const safeStyleValue = (property, value) => {
   if (property === 'border') return /^(?:0|[\d.]+px\s+(?:solid|dashed)\s+#[0-9a-f]{3,8})$/i.test(clean);
   return false;
 };
-const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).filter(([property, styleValue]) => allowedStyleProperties.has(property?.trim().toLowerCase()) && safeStyleValue(property.trim().toLowerCase(), styleValue || '')).map(([property, styleValue]) => `${property.trim().toLowerCase()}:${styleValue.trim()}`).join(';');
+const isDefaultColor = (value) => {
+  const clean = value.trim().toLowerCase();
+  if (/^(?:#17211f|#000(?:000)?|black)$/.test(clean)) return true;
+  const rgb = /^rgb\(\s*([\d.]+)(%?)\s*,\s*([\d.]+)(%?)\s*,\s*([\d.]+)(%?)\s*\)$/.exec(clean);
+  if (!rgb) return false;
+  const channels = [1, 3, 5].map((index) => Number(rgb[index]) * (rgb[index + 1] === '%' ? 2.55 : 1));
+  return channels.every((channel, index) => Math.abs(channel - [23, 33, 31][index]) < 0.01) || channels.every((channel) => channel === 0);
+};
+const isDefaultStyle = (property, value) => property === 'font-family' || property === 'line-height' || (property === 'font-size' && value === '14px') || (property === 'color' && isDefaultColor(value));
+const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).map(([property, styleValue]) => [property?.trim().toLowerCase(), styleValue?.trim()]).filter(([property, styleValue]) => allowedStyleProperties.has(property) && safeStyleValue(property, styleValue || '') && !isDefaultStyle(property, styleValue)).map(([property, styleValue]) => `${property}:${styleValue}`).join(';');
 const esc = (text) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
 const structuralTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
 const formattingContainers = new Set(['ol', 'ul', 'table', 'thead', 'tbody', 'tr']);
@@ -96,11 +104,13 @@ export function sanitizeEmailHtml(dirty) {
     }
     if (tag === 'a' && element.hasAttribute('href')) { element.setAttribute('target', '_blank'); element.setAttribute('rel', 'noopener noreferrer'); }
   }
-  for (const element of [...doc.body.querySelectorAll('p, li, td, th')]) if (!element.getAttribute('style')) element.setAttribute('style', emailStyle);
-  for (const table of doc.body.querySelectorAll('table')) table.setAttribute('style', `border-collapse:collapse;width:100%;${emailStyle}`);
+  for (const table of doc.body.querySelectorAll('table')) {
+    const existing = (table.getAttribute('style') || '').split(';').filter((declaration) => declaration && !/^(?:border-collapse|width):/i.test(declaration));
+    table.setAttribute('style', [...existing, 'border-collapse:collapse', 'width:100%'].join(';'));
+  }
   for (const cell of doc.body.querySelectorAll('td, th')) {
-    const existing = (cell.getAttribute('style') || emailStyle).split(';').filter((declaration) => !/^(?:border|padding|vertical-align):/i.test(declaration));
-    cell.setAttribute('style', `${existing.join(';')};border:1px solid #dce4df;padding:8px;vertical-align:top`);
+    const existing = (cell.getAttribute('style') || '').split(';').filter((declaration) => declaration && !/^(?:border|padding|vertical-align):/i.test(declaration));
+    cell.setAttribute('style', [...existing, 'border:1px solid #dce4df', 'padding:8px', 'vertical-align:top'].join(';'));
   }
   return prettyPrintEmailHtml(doc.body.innerHTML.trim());
 }
