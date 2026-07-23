@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import JSZip from 'jszip';
-import { assertDocxSignature, convertDocx, prettyPrintEmailHtml, sanitizeEmailHtml, validateDocxFile } from './docx-email.js';
+import { assertDocxSignature, convertDocx, prettyPrintEmailHtml, renderDocxXml, sanitizeEmailHtml, validateDocxFile } from './docx-email.js';
 
 test('sanitizer retains safe email formatting and removes active markup', () => {
   const output = sanitizeEmailHtml('<p onclick="evil()"><strong>粗體</strong><a href="https://example.com" onclick="evil()">安全連結</a><a href="javascript:evil()">危險</a><a href="data:text/html,x">資料</a><a href="vbscript:evil">危險二</a><script>evil()</script><form>bad</form><iframe src="https://evil.example"></iframe></p>');
@@ -33,6 +33,13 @@ test('converts actual DOCX fixture without default styles while retaining non-de
   assert.doesNotMatch(html, /(?:font-family|line-height):/i);
   assert.doesNotMatch(html, /font-size:14px/i);
   assert.doesNotMatch(html, /color:(?:#17211f|#000(?:000)?|black)/i);
+});
+
+test('OOXML bold emits strong only for enabled values', async () => {
+  const documentXml = (bold) => `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr>${bold}</w:rPr><w:t>bold</w:t></w:r></w:p></w:body></w:document>`;
+  const render = async (bold) => renderDocxXml(await new JSZip().file('word/document.xml', documentXml(bold)).generateAsync({ type: 'arraybuffer' }));
+  for (const bold of ['', '<w:b w:val="0"/>', '<w:b w:val="false"/>', '<w:b w:val="off"/>', '<w:b w:val="none"/>', '<w:b w:val="unexpected"/>']) assert.doesNotMatch(await render(bold), /<strong>/);
+  for (const bold of ['<w:b/>', '<w:b w:val="1"/>', '<w:b w:val="true"/>', '<w:b w:val="on"/>', '<w:b w:val="TRUE"/>']) assert.match(await render(bold), /<strong>bold<\/strong>/);
 });
 
 test('formats sanitized HTML deterministically without changing text-node whitespace or active-markup safety', () => {

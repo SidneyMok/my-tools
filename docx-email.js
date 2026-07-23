@@ -80,6 +80,11 @@ export function prettyPrintEmailHtml(html) {
 const children = (node, name) => Array.from(node?.childNodes || []).filter((child) => child.nodeType === 1 && child.localName === name);
 const child = (node, name) => children(node, name)[0];
 const attr = (node, name) => node?.getAttributeNS(WORD_NS, name) ?? node?.getAttribute(`w:${name}`) ?? node?.getAttribute(name);
+const enabledOoxmlBoolean = (node) => {
+  if (!node) return false;
+  const value = attr(node, 'val');
+  return value == null || /^(?:1|true|on)$/i.test(value.trim());
+};
 
 export function validateDocxFile(file) {
   if (!file?.name?.toLowerCase().endsWith('.docx')) return { ok: false, message: '只支援 .docx 檔案；舊版 .doc 無法轉換。' };
@@ -123,7 +128,7 @@ function runHtml(run) {
   if (/^[0-9a-f]{6}$/i.test(color)) styles.push(`color:#${color}`);
   if (/^\d+$/.test(size || '')) styles.push(`font-size:${Number(size) / 2}pt`);
   let output = styles.length ? `<span style="${styles.join(';')}">${text}</span>` : text;
-  if (child(properties, 'b')) output = `<strong>${output}</strong>`;
+  if (enabledOoxmlBoolean(child(properties, 'b'))) output = `<strong>${output}</strong>`;
   if (child(properties, 'i')) output = `<em>${output}</em>`;
   if (child(properties, 'u') && attr(child(properties, 'u'), 'val') !== 'none') output = `<u>${output}</u>`;
   if (child(properties, 'strike') || child(properties, 'dstrike')) output = `<s>${output}</s>`;
