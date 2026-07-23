@@ -1,3 +1,6 @@
 # Private local coordination material.
 # Keep shared engineering documentation in tracked files such as README.md and docs/.
 .talos/
+
+# Local browser-verification artifacts.
+evidence/

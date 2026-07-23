@@ -39,7 +39,7 @@ async function uploadFixture(page) {
   await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
 }
 
-test('DOCX page loads pinned tracked parser bundles locally, never from node_modules or an external origin', async () => {
+test('docx email loads pinned tracked parser bundles locally, never from node_modules or an external origin', async () => {
   await withPage(async ({ page, url }) => {
     const requests = [];
     page.on('request', (request) => requests.push(request.url()));
@@ -53,7 +53,21 @@ test('DOCX page loads pinned tracked parser bundles locally, never from node_mod
   });
 });
 
-test('DOCX page emits one sanitized artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
+test('docx email browser DOMParser sanitizer is byte-idempotent for default, table, and cell styles', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const results = await page.evaluate(async () => {
+      const { sanitizeEmailHtml } = await import('./docx-email.js');
+      return ['<p>test</p>', '<table><tbody><tr><td>test</td></tr></tbody></table>'].map((input) => {
+        const first = sanitizeEmailHtml(input);
+        return { first, second: sanitizeEmailHtml(first) };
+      });
+    });
+    for (const { first, second } of results) assert.equal(second, first);
+  });
+});
+
+test('docx email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
     assert.equal(await page.locator('#docx-preview').getAttribute('sandbox'), '');
@@ -62,8 +76,9 @@ test('DOCX page emits one sanitized artifact to preview, clipboard, and UTF-8 do
     assert.match(source, /color:#FF0000/i);
     assert.match(source, /font-size:16pt/i);
     assert.match(source, /<u>/i);
-    assert.match(source, /<ul><li[^>]*>項目符號清單一<\/li><li[^>]*>項目符號清單二<\/li><\/ul>/);
-    assert.match(source, /<ol><li[^>]*>編號清單一<\/li><li[^>]*>編號清單二<\/li><\/ol>/);
+    assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
+    assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
+    assert.match(source, /\n<table/);
     assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
     assert.equal(await page.locator('#docx-preview').contentFrame().locator('ul > li').count(), 2);
     assert.equal(await page.locator('#docx-preview').contentFrame().locator('ol > li').count(), 2);
@@ -76,7 +91,7 @@ test('DOCX page emits one sanitized artifact to preview, clipboard, and UTF-8 do
   });
 });
 
-test('DOCX page gives explicit invalid-extension, corrupt/missing-XML, and over-limit feedback', async () => {
+test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over-limit feedback', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
     await page.locator('#docx-input').setInputFiles({ name: 'legacy.doc', mimeType: 'application/msword', buffer: Buffer.from('old') });
@@ -94,12 +109,16 @@ test('DOCX page gives explicit invalid-extension, corrupt/missing-XML, and over-
   });
 });
 
-test('all tool navigation includes every tool and the OOXML fidelity warning is accurate', async () => {
+test('all tool navigation uses the exact lowercase docx email tool name and the OOXML fidelity warning is accurate', async () => {
   for (const filename of pages) {
     const html = await readFile(path.join(root, filename), 'utf8');
     for (const target of navTargets) assert.match(html, new RegExp(`href="${target}"`));
+    assert.match(html, /href="docx-email\.html"[^>]*>docx email<\/a>/);
   }
   const docxPage = await readFile(path.join(root, 'docx-email.html'), 'utf8');
+  assert.match(docxPage, /<title>docx email \| 工具箱<\/title>/);
+  assert.match(docxPage, /<h1 id="docx-title">docx email → HTML<\/h1>/);
+  assert.match(docxPage, /title="docx email 預覽"/);
   assert.match(docxPage, /src="vendor\/jszip-3\.10\.1\.min\.js"/);
   assert.match(docxPage, /src="vendor\/mammoth-1\.11\.0\.browser\.js"/);
   assert.doesNotMatch(docxPage, /node_modules|https?:\/\//);
