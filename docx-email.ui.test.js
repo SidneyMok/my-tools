@@ -53,21 +53,24 @@ test('docx email loads pinned tracked parser bundles locally, never from node_mo
   });
 });
 
-test('docx email browser DOMParser sanitizer is byte-idempotent for default, table, and cell styles', async () => {
+test('Docx Email browser DOMParser sanitizer strips target styles and is byte-idempotent for default, table, and cell styles', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
     const results = await page.evaluate(async () => {
       const { sanitizeEmailHtml } = await import('./docx-email.js');
-      return ['<p>test</p>', '<table><tbody><tr><td>test</td></tr></tbody></table>'].map((input) => {
+      return ['<p>test</p>', '<table><tbody><tr><td>test</td></tr></tbody></table>', '<p style="font-family:Arial;line-height:1.6;font-size:14px;color:#17211f">test</p>'].map((input) => {
         const first = sanitizeEmailHtml(input);
         return { first, second: sanitizeEmailHtml(first) };
       });
     });
-    for (const { first, second } of results) assert.equal(second, first);
+    for (const { first, second } of results) {
+      assert.equal(second, first);
+      assert.doesNotMatch(first, /(?:font-family|line-height):|font-size:14px|color:(?:#17211f|#000(?:000)?|black)/i);
+    }
   });
 });
 
-test('docx email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
+test('Docx Email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
     assert.equal(await page.locator('#docx-preview').getAttribute('sandbox'), '');
@@ -75,6 +78,7 @@ test('docx email emits one final sanitized, readable artifact to preview, clipbo
     const source = await page.locator('#docx-source').inputValue();
     assert.match(source, /color:#FF0000/i);
     assert.match(source, /font-size:16pt/i);
+    assert.doesNotMatch(source, /(?:font-family|line-height):|font-size:14px|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
     assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
     assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
@@ -109,21 +113,18 @@ test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over
   });
 });
 
-test('all tool navigation uses the exact lowercase docx email tool name and the OOXML fidelity warning is accurate', async () => {
+test('all user-visible Docx Email labels use the exact product name and the page omits nonessential instructions', async () => {
   for (const filename of pages) {
     const html = await readFile(path.join(root, filename), 'utf8');
     for (const target of navTargets) assert.match(html, new RegExp(`href="${target}"`));
-    assert.match(html, /href="docx-email\.html"[^>]*>docx email<\/a>/);
+    assert.match(html, /href="docx-email\.html"[^>]*>Docx Email<\/a>/);
   }
   const docxPage = await readFile(path.join(root, 'docx-email.html'), 'utf8');
-  assert.match(docxPage, /<title>docx email \| 工具箱<\/title>/);
-  assert.match(docxPage, /<h1 id="docx-title">docx email → HTML<\/h1>/);
-  assert.match(docxPage, /title="docx email 預覽"/);
+  assert.match(docxPage, /<title>Docx Email<\/title>/);
+  assert.match(docxPage, /<h1 id="docx-title">Docx Email<\/h1>/);
+  assert.match(docxPage, /title="Docx Email"/);
+  assert.doesNotMatch(docxPage, /完全在此裝置轉換|僅限 \.docx|Mammoth 僅協助|圖片可在本機預覽|唯一輸出|隔離 iframe/);
   assert.match(docxPage, /src="vendor\/jszip-3\.10\.1\.min\.js"/);
   assert.match(docxPage, /src="vendor\/mammoth-1\.11\.0\.browser\.js"/);
   assert.doesNotMatch(docxPage, /node_modules|https?:\/\//);
-  const pageScript = await readFile(path.join(root, 'docx-email-page.js'), 'utf8');
-  assert.match(pageScript, /OOXML 執行屬性/);
-  assert.match(pageScript, /色彩、字級與底線/);
-  assert.match(pageScript, /Mammoth 僅用於基本 DOCX 相容性診斷/);
 });
