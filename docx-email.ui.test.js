@@ -95,16 +95,28 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
   });
 });
 
-test('Docx Email catalog groups and searches every read-only built-in variable', async () => {
+test('Docx Email catalog is compact by default, expands accessibly, and search reveals later groups', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
-    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['保單與繳費', '投保人與受保人', '保險公司與產品', '銷售與行政', '簽單員與通知', '日期與狀態']);
+    const catalog = page.locator('#variable-list'); const toggle = page.locator('#toggle-variable-catalog');
+    assert.equal(await catalog.getAttribute('data-expanded'), 'false');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(await toggle.getAttribute('aria-controls'), 'variable-list');
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['保單與繳費']);
+    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 23);
+    assert.equal(await catalog.evaluate((element) => getComputedStyle(element).overflowY), 'visible');
+    await toggle.click();
+    assert.equal(await catalog.getAttribute('data-expanded'), 'true');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
     assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 105);
-    await page.locator('#variable-search').fill('保單編號');
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['保單與繳費', '投保人與受保人', '保險公司與產品', '銷售與行政', '簽單員與通知', '日期與狀態']);
+    await page.getByRole('button', { name: '收合變數' }).click();
+    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 23);
+    await page.locator('#variable-search').fill('機器人是否更新');
+    assert.equal(await catalog.getAttribute('data-expanded'), 'false');
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['日期與狀態']);
     assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 1);
-    assert.match(await page.getByRole('button', { name: /保單編號.*policyId/ }).textContent(), /唯讀/);
-    await page.locator('#variable-search').fill('policyId');
-    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 1);
+    assert.match(await page.getByRole('button', { name: /機器人是否更新.*robotUpdate/ }).textContent(), /唯讀/);
   });
 });
 
