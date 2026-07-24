@@ -115,6 +115,35 @@ test('Docx Email shows only the exact ordered common-variable catalog and search
   });
 });
 
+test('Docx Email initial workspace has no reserved empty feedback space and remains compact', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(url);
+    const layout = await page.evaluate(() => {
+      const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+      const error = document.querySelector('#docx-error');
+      const warnings = document.querySelector('#docx-warnings');
+      return {
+        errorText: error.textContent,
+        warningText: warnings.textContent,
+        errorDisplay: getComputedStyle(error).display,
+        warningDisplay: getComputedStyle(warnings).display,
+        workspaceTop: rect('.docx-workspace').top,
+        fileDropBottom: rect('.file-drop').bottom,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: innerWidth
+      };
+    });
+    assert.equal(layout.errorText, '');
+    assert.equal(layout.warningText, '');
+    assert.equal(layout.errorDisplay, 'none');
+    assert.equal(layout.warningDisplay, 'none');
+    assert.equal(layout.workspaceTop, layout.fileDropBottom);
+    assert.ok(layout.workspaceTop < 190, `expected a compact initial workspace, got ${layout.workspaceTop}px`);
+    assert.equal(layout.documentScrollWidth, layout.viewportWidth);
+  });
+});
+
 test('Docx Email keeps the source editor and mail preview at the same workspace height on desktop', async () => {
   await withPage(async ({ page, url }) => {
     await page.setViewportSize({ width: 1200, height: 900 });
