@@ -115,6 +115,21 @@ test('Docx Email shows only the exact ordered common-variable catalog and search
   });
 });
 
+test('Docx Email keeps the source editor and mail preview at the same workspace height on desktop', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.goto(url);
+    await uploadFixture(page);
+    const geometry = await page.evaluate(() => {
+      const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+      const source = rect('#docx-source');
+      const preview = rect('#docx-preview');
+      return { sourceHeight: source.height, previewHeight: preview.height };
+    });
+    assert.equal(geometry.sourceHeight, geometry.previewHeight);
+  });
+});
+
 test('Docx Email inserts literal variables over selection and keeps edited artifact parity', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
