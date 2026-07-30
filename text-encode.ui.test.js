@@ -91,11 +91,52 @@ test('Text & Encode works without horizontal overflow at target widths', async (
 test('SQL IN formatter is the first primary Text & Encode feature before Base64', async () => {
   const html = await readFile(path.join(root, 'text-encode.html'), 'utf8');
   const sqlPanel = html.indexOf('<section class="sql-in-panel"');
-  const base64Controls = html.indexOf('<strong>Base64</strong>');
+  const encoderModule = html.indexOf('<section class="text-encode-module"');
 
   assert.ok(sqlPanel >= 0, 'SQL IN formatter panel is present');
-  assert.ok(base64Controls >= 0, 'Base64 controls are present');
-  assert.ok(sqlPanel < base64Controls, 'SQL IN formatter precedes Base64 in DOM order');
+  assert.ok(encoderModule >= 0, 'encoder/decoder module is present');
+  assert.ok(sqlPanel < encoderModule, 'SQL IN formatter precedes the encoder/decoder module in DOM order');
+  assert.match(html, /<h2 id="text-encode-module-title">文字編碼與解碼<\/h2>/);
+  assert.match(html, /class="action-row sql-in-copy-row"[^>]*>[\s\S]*id="copy-sql-in"/);
+});
+
+test('Text & Encode keeps UUID controls aligned and modules separated at desktop and mobile widths', async () => {
+  const { server, url } = await serve();
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  try {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+      await page.goto(`${url}/text-encode.html`, { waitUntil: 'networkidle' });
+      const initial = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          uuidOutput: rect('#uuid-output'),
+          generate: rect('#generate-uuid'),
+          copy: rect('#copy-uuid'),
+          sqlCopy: rect('#copy-sql-in'),
+          sqlPanel: rect('.sql-in-panel'),
+          encoderModule: rect('.text-encode-module')
+        };
+      });
+      assert.equal(initial.documentWidth, viewport.width);
+      assert.equal(initial.uuidOutput.height, initial.generate.height);
+      assert.equal(initial.uuidOutput.height, initial.copy.height);
+      assert.ok(initial.sqlCopy.bottom <= initial.sqlPanel.bottom, 'SQL copy stays inside the SQL formatter');
+      assert.ok(initial.sqlPanel.bottom <= initial.encoderModule.top, 'SQL formatter does not overlap encoder module');
+      await page.locator('#generate-uuid').click();
+      const generated = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
+        return { output: rect('#uuid-output'), generate: rect('#generate-uuid'), copy: rect('#copy-uuid') };
+      });
+      assert.equal(generated.output.height, generated.generate.height);
+      assert.equal(generated.output.height, generated.copy.height);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('SQL IN formatter formats, counts, rejects invalid numeric input, and copies output', async () => {
