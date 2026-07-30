@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="本機處理 Base64、URL、雜湊與 UUID 的文字工具。" />
+  <title>Text &amp; Encode | 工具箱</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html"><span class="brand-mark">&lt;/&gt;</span><span>工具箱</span></a>
+    <nav aria-label="工具導覽">
+      <a href="index.html">JSON</a>
+      <a href="html-preview.html">HTML</a>
+      <a href="timestamp.html">Timestamp</a>
+      <a href="network.html">Network</a>
+      <a href="docx-email.html">Docx Email</a>
+      <a class="active" href="text-encode.html" aria-current="page">Text &amp; Encode</a>
+    </nav>
+    <span class="local-note"><i></i>本機運行</span>
+  </header>
+  <main>
+    <section class="tool-section text-encode-section" aria-labelledby="text-encode-title">
+      <div class="section-heading"><div><h1 id="text-encode-title">Text &amp; Encode</h1><p>在瀏覽器本機處理文字、編碼、雜湊與 UUID。</p></div><output id="text-encode-status" class="status" aria-live="polite">等待輸入</output></div>
+      <div class="text-encode-workspace">
+        <label class="editor-panel"><span>輸入</span><textarea id="text-encode-input" spellcheck="false" aria-label="文字輸入" placeholder="輸入或貼上文字"></textarea></label>
+        <label class="editor-panel"><span>結果</span><textarea id="text-encode-output" spellcheck="false" readonly aria-label="文字處理結果" placeholder="處理結果會顯示在這裡"></textarea></label>
+      </div>
+      <p id="text-encode-error" class="error-message" role="alert"></p>
+      <div class="text-encode-actions" aria-label="文字處理操作">
+        <div><strong>Base64</strong><button id="base64-encode">編碼</button><button id="base64-decode">解碼</button></div>
+        <div><strong>URL 元件</strong><button id="url-encode">編碼</button><button id="url-decode">解碼</button></div>
+        <div><strong>雜湊</strong><button data-hash="SHA-256">SHA-256</button><button data-hash="SHA-1">SHA-1</button></div>
+      </div>
+      <div class="action-row"><span class="action-spacer"></span><button class="icon-button" id="copy-text-output" title="複製結果" aria-label="複製結果">⧉</button><button class="icon-button" id="clear-text-encode" title="清除內容" aria-label="清除內容">×</button></div>
+      <section class="uuid-panel" aria-labelledby="uuid-title">
+        <div><h2 id="uuid-title">UUID v4</h2><p>使用瀏覽器安全亂數產生。</p></div>
+        <div class="uuid-controls"><output id="uuid-output" class="uuid-output" aria-live="polite"></output><button class="primary" id="generate-uuid">產生</button><button class="icon-button" id="copy-uuid" title="複製 UUID" aria-label="複製 UUID">⧉</button></div>
+      </section>
+    </section>
+  </main>
+  <footer>工具箱 · 資料不會離開你的裝置</footer>
+  <script type="module" src="text-encode.js"></script>
+</body>
+</html>
