@@ -88,6 +88,40 @@ test('Text & Encode works without horizontal overflow at target widths', async (
   }
 });
 
+test('SQL IN formatter formats, counts, rejects invalid numeric input, and copies output', async () => {
+  const { server, url } = await serve();
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  try {
+    await page.goto(`${url}/text-encode.html`, { waitUntil: 'networkidle' });
+    await page.locator('#sql-in-input').fill(" apple \n\nO'Reilly\n banana ");
+    await page.locator('#format-sql-in').click();
+    assert.equal(await page.locator('#sql-in-output').inputValue(), "IN ('apple','O''Reilly','banana')");
+    assert.equal(await page.locator('#sql-in-count').textContent(), '已包含 3 個值');
+    await page.locator('#sql-in-values-only').check();
+    await page.locator('#format-sql-in').click();
+    assert.equal(await page.locator('#sql-in-output').inputValue(), "'apple','O''Reilly','banana'");
+    await page.locator('#sql-in-numeric').check();
+    await page.locator('#sql-in-input').fill('1\n2.5\n-3e2');
+    await page.locator('#format-sql-in').click();
+    assert.equal(await page.locator('#sql-in-output').inputValue(), '1,2.5,-3e2');
+    await page.locator('#sql-in-input').fill('1\nDROP TABLE');
+    await page.locator('#format-sql-in').click();
+    assert.equal(await page.locator('#sql-in-output').inputValue(), '');
+    assert.match(await page.locator('#sql-in-error').textContent(), /第 2 行不是有效數字/);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+    await page.locator('#sql-in-numeric').uncheck();
+    await page.locator('#sql-in-values-only').uncheck();
+    await page.locator('#sql-in-input').fill('apple\nbanana');
+    await page.locator('#format-sql-in').click();
+    await page.locator('#copy-sql-in').click();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "IN ('apple','banana')");
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('Text & Encode exposes Base64, URL errors, hashing, and UUID generation in the browser', async () => {
   const { server, url } = await serve();
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
