@@ -17,6 +17,23 @@ export function urlEncode(value) {
   return encodeURIComponent(value);
 }
 
+export function formatSqlInList(value, { valuesOnly = false, numeric = false } = {}) {
+  const values = value.split(/\r?\n/)
+    .map((line, index) => ({ value: line.trim(), line: index + 1 }))
+    .filter(({ value: item }) => item);
+
+  if (numeric) {
+    const invalid = values.find(({ value: item }) => !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(item));
+    if (invalid) throw new Error(`第 ${invalid.line} 行不是有效數字。`);
+  }
+
+  const retainedValues = values.map(({ value: item }) => item);
+
+  const formattedValues = retainedValues.map((item) => numeric ? item : `'${item.replaceAll("'", "''")}'`);
+  const list = formattedValues.join(',');
+  return { output: valuesOnly ? list : `IN (${list})`, count: retainedValues.length };
+}
+
 export function urlDecode(value) {
   return decodeURIComponent(value);
 }
@@ -55,6 +72,10 @@ function initialiseTextEncodeTool() {
   const status = document.getElementById('text-encode-status');
   const error = document.getElementById('text-encode-error');
   const uuidOutput = document.getElementById('uuid-output');
+  const sqlInput = document.getElementById('sql-in-input');
+  const sqlOutput = document.getElementById('sql-in-output');
+  const sqlError = document.getElementById('sql-in-error');
+  const sqlCount = document.getElementById('sql-in-count');
 
   function run(transform, success) {
     error.textContent = '';
@@ -87,6 +108,24 @@ function initialiseTextEncodeTool() {
     }
   }));
   document.getElementById('copy-text-output').addEventListener('click', () => copyText(output.value, status));
+  document.getElementById('format-sql-in').addEventListener('click', () => {
+    sqlError.textContent = '';
+    try {
+      const result = formatSqlInList(sqlInput.value, {
+        valuesOnly: document.getElementById('sql-in-values-only').checked,
+        numeric: document.getElementById('sql-in-numeric').checked
+      });
+      sqlOutput.value = result.output;
+      sqlCount.textContent = `已包含 ${result.count} 個值`;
+      status.textContent = '已格式化 SQL IN 清單';
+    } catch (caught) {
+      sqlOutput.value = '';
+      sqlCount.textContent = '已包含 0 個值';
+      sqlError.textContent = caught.message || '無法格式化 SQL IN 清單。';
+      status.textContent = '格式錯誤';
+    }
+  });
+  document.getElementById('copy-sql-in').addEventListener('click', () => copyText(sqlOutput.value, status));
   document.getElementById('clear-text-encode').addEventListener('click', () => {
     input.value = '';
     output.value = '';

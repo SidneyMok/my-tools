@@ -3,11 +3,40 @@ import test from 'node:test';
 import {
   base64Decode,
   base64Encode,
+  formatSqlInList,
   hashText,
   urlDecode,
   urlEncode,
   uuidV4
 } from './text-encode.js';
+
+test('SQL IN formatter removes blank lines and trims retained values', () => {
+  assert.deepEqual(
+    formatSqlInList('  apple  \n\n banana\n   \ncherry  '),
+    { output: "IN ('apple','banana','cherry')", count: 3 }
+  );
+});
+
+test('SQL IN formatter escapes text values and supports values-only output', () => {
+  assert.deepEqual(
+    formatSqlInList("O'Reilly\napple", { valuesOnly: true }),
+    { output: "'O''Reilly','apple'", count: 2 }
+  );
+});
+
+test('SQL IN formatter emits valid numeric values without quotes', () => {
+  assert.deepEqual(
+    formatSqlInList('  -12.5\n0\n1e3  ', { numeric: true }),
+    { output: 'IN (-12.5,0,1e3)', count: 3 }
+  );
+});
+
+test('SQL IN formatter rejects any invalid numeric value without partial output', () => {
+  assert.throws(
+    () => formatSqlInList('1\n2; DROP TABLE users\n3', { numeric: true }),
+    /第 2 行.*數字/
+  );
+});
 
 test('Base64 round-trips Unicode text', () => {
   const source = '你好，世界！\nemoji: 😀';
