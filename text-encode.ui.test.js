@@ -39,6 +39,33 @@ test('Network discloses that queried IP addresses are sent to its third-party lo
   assert.match(html, /IP 位址會傳送至第三方 IP 查詢服務/);
 });
 
+test('all tool navigation links are simultaneously visible at 390px', async () => {
+  const { server, url } = await serve();
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  try {
+    for (const filename of toolPages) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+      await page.goto(`${url}/${filename}`, { waitUntil: 'networkidle' });
+      const navigation = await page.locator('nav').evaluate((nav) => ({
+        clientWidth: nav.clientWidth,
+        scrollWidth: nav.scrollWidth,
+        links: Array.from(nav.querySelectorAll('a'), (link) => {
+          const rect = link.getBoundingClientRect();
+          return { text: link.textContent.trim(), left: rect.left, right: rect.right };
+        })
+      }));
+      assert.equal(navigation.scrollWidth, navigation.clientWidth, filename);
+      for (const link of navigation.links) {
+        assert.ok(link.left >= 0 && link.right <= 390, `${filename}: ${link.text}`);
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('Text & Encode works without horizontal overflow at target widths', async () => {
   const { server, url } = await serve();
   const browser = await chromium.launch({ executablePath: chrome, headless: true });

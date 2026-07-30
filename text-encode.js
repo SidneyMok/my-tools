@@ -105,7 +105,6 @@ function initialiseTextEncodeTool() {
   });
   document.getElementById('copy-uuid').addEventListener('click', () => copyText(uuidOutput.value, status));
 
-  requestAnimationFrame(() => document.querySelector('nav a[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'center' }));
 }
 
 if (typeof document !== 'undefined') initialiseTextEncodeTool();
