@@ -24,17 +24,6 @@
   <main>
     <section class="tool-section text-encode-section" aria-labelledby="text-encode-title">
       <div class="section-heading"><div><h1 id="text-encode-title">Text &amp; Encode</h1><p>在瀏覽器本機處理文字、編碼、雜湊與 UUID。</p></div><output id="text-encode-status" class="status" aria-live="polite">等待輸入</output></div>
-      <div class="text-encode-workspace">
-        <label class="editor-panel"><span>輸入</span><textarea id="text-encode-input" spellcheck="false" aria-label="文字輸入" placeholder="輸入或貼上文字"></textarea></label>
-        <label class="editor-panel"><span>結果</span><textarea id="text-encode-output" spellcheck="false" readonly aria-label="文字處理結果" placeholder="處理結果會顯示在這裡"></textarea></label>
-      </div>
-      <p id="text-encode-error" class="error-message" role="alert"></p>
-      <div class="text-encode-actions" aria-label="文字處理操作">
-        <div><strong>Base64</strong><button id="base64-encode">編碼</button><button id="base64-decode">解碼</button></div>
-        <div><strong>URL 元件</strong><button id="url-encode">編碼</button><button id="url-decode">解碼</button></div>
-        <div><strong>雜湊</strong><button data-hash="SHA-256">SHA-256</button><button data-hash="SHA-1">SHA-1</button></div>
-      </div>
-      <div class="action-row"><span class="action-spacer"></span><button class="icon-button" id="copy-text-output" title="複製結果" aria-label="複製結果">⧉</button><button class="icon-button" id="clear-text-encode" title="清除內容" aria-label="清除內容">×</button></div>
       <section class="sql-in-panel" aria-labelledby="sql-in-title">
         <div class="sql-in-heading"><div><h2 id="sql-in-title">SQL IN 清單</h2><p>每行一個值；空白行會略過，資料只在瀏覽器本機處理。</p></div><output id="sql-in-count" class="status" aria-live="polite">已包含 0 個值</output></div>
         <label class="editor-panel"><span>值</span><textarea id="sql-in-input" spellcheck="false" aria-label="SQL IN 值輸入" placeholder="apple&#10;banana&#10;O'Reilly"></textarea></label>
@@ -47,6 +36,17 @@
         <p id="sql-in-error" class="error-message" role="alert"></p>
         <div class="action-row"><span class="action-spacer"></span><button class="icon-button" id="copy-sql-in" title="複製 SQL IN 結果" aria-label="複製 SQL IN 結果">⧉</button></div>
       </section>
+      <div class="text-encode-workspace">
+        <label class="editor-panel"><span>輸入</span><textarea id="text-encode-input" spellcheck="false" aria-label="文字輸入" placeholder="輸入或貼上文字"></textarea></label>
+        <label class="editor-panel"><span>結果</span><textarea id="text-encode-output" spellcheck="false" readonly aria-label="文字處理結果" placeholder="處理結果會顯示在這裡"></textarea></label>
+      </div>
+      <p id="text-encode-error" class="error-message" role="alert"></p>
+      <div class="text-encode-actions" aria-label="文字處理操作">
+        <div><strong>Base64</strong><button id="base64-encode">編碼</button><button id="base64-decode">解碼</button></div>
+        <div><strong>URL 元件</strong><button id="url-encode">編碼</button><button id="url-decode">解碼</button></div>
+        <div><strong>雜湊</strong><button data-hash="SHA-256">SHA-256</button><button data-hash="SHA-1">SHA-1</button></div>
+      </div>
+      <div class="action-row"><span class="action-spacer"></span><button class="icon-button" id="copy-text-output" title="複製結果" aria-label="複製結果">⧉</button><button class="icon-button" id="clear-text-encode" title="清除內容" aria-label="清除內容">×</button></div>
       <section class="uuid-panel" aria-labelledby="uuid-title">
         <div><h2 id="uuid-title">UUID v4</h2><p>使用瀏覽器安全亂數產生。</p></div>
         <div class="uuid-controls"><output id="uuid-output" class="uuid-output" aria-live="polite"></output><button class="primary" id="generate-uuid">產生</button><button class="icon-button" id="copy-uuid" title="複製 UUID" aria-label="複製 UUID">⧉</button></div>

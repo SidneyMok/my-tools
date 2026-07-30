@@ -88,6 +88,16 @@ test('Text & Encode works without horizontal overflow at target widths', async (
   }
 });
 
+test('SQL IN formatter is the first primary Text & Encode feature before Base64', async () => {
+  const html = await readFile(path.join(root, 'text-encode.html'), 'utf8');
+  const sqlPanel = html.indexOf('<section class="sql-in-panel"');
+  const base64Controls = html.indexOf('<strong>Base64</strong>');
+
+  assert.ok(sqlPanel >= 0, 'SQL IN formatter panel is present');
+  assert.ok(base64Controls >= 0, 'Base64 controls are present');
+  assert.ok(sqlPanel < base64Controls, 'SQL IN formatter precedes Base64 in DOM order');
+});
+
 test('SQL IN formatter formats, counts, rejects invalid numeric input, and copies output', async () => {
   const { server, url } = await serve();
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
