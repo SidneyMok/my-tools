@@ -126,6 +126,14 @@ function initialiseTextEncodeTool() {
     }
   });
   document.getElementById('copy-sql-in').addEventListener('click', () => copyText(sqlOutput.value, status));
+  document.getElementById('clear-sql-in').addEventListener('click', () => {
+    sqlInput.value = '';
+    sqlOutput.value = '';
+    sqlError.textContent = '';
+    sqlCount.textContent = '已包含 0 個值';
+    status.textContent = '等待輸入';
+    sqlInput.focus();
+  });
   document.getElementById('clear-text-encode').addEventListener('click', () => {
     input.value = '';
     output.value = '';
