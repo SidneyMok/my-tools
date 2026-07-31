@@ -98,6 +98,7 @@ test('SQL IN formatter is the first primary Text & Encode feature before Base64'
   assert.ok(sqlPanel < encoderModule, 'SQL IN formatter precedes the encoder/decoder module in DOM order');
   assert.match(html, /<h2 id="text-encode-module-title">文字編碼與解碼<\/h2>/);
   assert.match(html, /class="action-row sql-in-copy-row"[^>]*>[\s\S]*id="copy-sql-in"/);
+  assert.match(html, /<button[^>]*id="clear-sql-in"[^>]*>清空<\/button>/);
 });
 
 test('Text & Encode keeps UUID controls aligned and modules separated at desktop and mobile widths', async () => {
@@ -167,6 +168,47 @@ test('SQL IN formatter formats, counts, rejects invalid numeric input, and copie
     await page.locator('#format-sql-in').click();
     await page.locator('#copy-sql-in').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "IN ('apple','banana')");
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('SQL IN clear resets only its workspace while preserving selected options and keyboard activation', async () => {
+  const { server, url } = await serve();
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  try {
+    await page.goto(`${url}/text-encode.html`, { waitUntil: 'networkidle' });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+    await page.locator('#sql-in-values-only').check();
+    await page.locator('#sql-in-numeric').check();
+    await page.locator('#sql-in-input').fill('1\n2.5');
+    await page.locator('#format-sql-in').click();
+    await page.locator('#copy-sql-in').click();
+    await page.waitForFunction(() => document.querySelector('#text-encode-status').textContent === '已複製');
+
+    await page.locator('#clear-sql-in').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#sql-in-input').inputValue(), '');
+    assert.equal(await page.locator('#sql-in-output').inputValue(), '');
+    assert.equal(await page.locator('#sql-in-count').textContent(), '已包含 0 個值');
+    assert.equal(await page.locator('#text-encode-status').textContent(), '等待輸入');
+    assert.equal(await page.locator('#sql-in-values-only').isChecked(), true);
+    assert.equal(await page.locator('#sql-in-numeric').isChecked(), true);
+    assert.equal(await page.locator('#sql-in-input').evaluate((element) => document.activeElement === element), true);
+
+    await page.locator('#sql-in-input').fill('not a number');
+    await page.locator('#format-sql-in').click();
+    assert.match(await page.locator('#sql-in-error').textContent(), /第 1 行不是有效數字/);
+    await page.locator('#clear-sql-in').focus();
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('#sql-in-error').textContent(), '');
+    assert.equal(await page.locator('#text-encode-status').textContent(), '等待輸入');
+
+    await page.locator('#sql-in-input').fill('3\n4');
+    await page.locator('#format-sql-in').click();
+    assert.equal(await page.locator('#sql-in-output').inputValue(), '3,4');
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
