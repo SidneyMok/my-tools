@@ -35,7 +35,7 @@
 
   const timestampInput = $('timestamp-input');
   if (timestampInput) {
-    let unit = 'seconds';
+    let unit = 'milliseconds';
     document.querySelectorAll('[data-unit]').forEach((button) => button.addEventListener('click', () => {
       unit = button.dataset.unit;
       document.querySelectorAll('[data-unit]').forEach((item) => item.classList.toggle('selected', item === button));
@@ -49,11 +49,21 @@
       if (format === 'MMM d, yyyy hh:mm:ss') return `${new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date)} ${date.getDate()}, ${values.year} ${values.hour}:${values.minute}:${values.second}`;
       return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}:${values.second}`;
     };
+    const copyValue = async (value, label) => {
+      const copyStatus = $('timestamp-copy-status');
+      if (!navigator.clipboard?.writeText) { copyStatus.textContent = '無法使用剪貼簿，請手動複製。'; return; }
+      try { await navigator.clipboard.writeText(value); copyStatus.textContent = `${label}已複製`; }
+      catch { copyStatus.textContent = '無法使用剪貼簿，請手動複製。'; }
+    };
     $('convert-timestamp').addEventListener('click', () => {
       const raw = timestampInput.value.trim(), result = $('timestamp-result');
       if (!/^[-+]?\d+(\.\d+)?$/.test(raw)) { result.textContent = '請輸入有效的數字時間戳。'; return; }
       const date = new Date(Number(raw) * (unit === 'seconds' ? 1000 : 1));
-      result.textContent = Number.isNaN(date.getTime()) ? '時間戳超出可處理範圍。' : `${formatDate(date)}\nUTC：${date.toISOString()}`;
+      if (Number.isNaN(date.getTime())) { result.textContent = '時間戳超出可處理範圍。'; return; }
+      const local = formatDate(date), utc = date.toISOString();
+      result.innerHTML = `<div class="timestamp-value-row"><span id="timestamp-local-result">${local}</span><button class="icon-button" id="copy-timestamp-local" title="複製本機日期時間" aria-label="複製本機日期時間">⧉</button></div><div class="timestamp-value-row"><span id="timestamp-utc-result">${utc}</span><button class="icon-button" id="copy-timestamp-utc" title="複製 UTC 日期時間" aria-label="複製 UTC 日期時間">⧉</button></div>`;
+      $('copy-timestamp-local').addEventListener('click', () => copyValue(local, '本機日期時間'));
+      $('copy-timestamp-utc').addEventListener('click', () => copyValue(utc, 'UTC 日期時間'));
     });
     $('timestamp-format').addEventListener('change', () => {
       if (timestampInput.value.trim()) $('convert-timestamp').click();

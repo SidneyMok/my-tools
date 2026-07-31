@@ -36,10 +36,43 @@ test('Timestamp formats local time with presets while preserving UTC output', as
     assert.equal(await page.locator('#timestamp-format option').count(), 4);
     await page.locator('#timestamp-input').fill('0');
     await page.locator('#convert-timestamp').click();
-    const defaultResult = await page.locator('#timestamp-result').textContent();
-    assert.match(defaultResult, /^1970-01-01 \d{2}:00:00\nUTC：1970-01-01T00:00:00\.000Z$/);
+    assert.match(await page.locator('#timestamp-local-result').textContent(), /^1970-01-01 \d{2}:00:00$/);
+    assert.equal(await page.locator('#timestamp-utc-result').textContent(), '1970-01-01T00:00:00.000Z');
     await page.locator('#timestamp-format').selectOption('yyyy/MM/dd hh:mm:ss');
-    assert.match(await page.locator('#timestamp-result').textContent(), /^1970\/01\/01 \d{2}:00:00\nUTC：1970-01-01T00:00:00\.000Z$/);
+    assert.match(await page.locator('#timestamp-local-result').textContent(), /^1970\/01\/01 \d{2}:00:00$/);
+    assert.equal(await page.locator('#timestamp-utc-result').textContent(), '1970-01-01T00:00:00.000Z');
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('Timestamp defaults to milliseconds and copies displayed local and UTC results', async () => {
+  const { server, url } = await serve();
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  try {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+    await page.goto(`${url}/timestamp.html`, { waitUntil: 'networkidle' });
+    assert.equal(await page.locator('[data-unit="milliseconds"]').evaluate((element) => element.classList.contains('selected')), true);
+    await page.locator('#timestamp-input').fill('1785462741010');
+    await page.locator('#convert-timestamp').click();
+    const local = await page.locator('#timestamp-local-result').textContent();
+    const utc = await page.locator('#timestamp-utc-result').textContent();
+    assert.match(local, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    assert.equal(utc, '2026-07-31T01:52:21.010Z');
+
+    await page.locator('#copy-timestamp-local').press('Enter');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), local);
+    assert.equal(await page.locator('#timestamp-copy-status').textContent(), '本機日期時間已複製');
+
+    await page.locator('#copy-timestamp-utc').click();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), utc);
+    assert.equal(await page.locator('#timestamp-copy-status').textContent(), 'UTC 日期時間已複製');
+
+    await page.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('denied')); });
+    await page.locator('#copy-timestamp-local').click();
+    assert.match(await page.locator('#timestamp-copy-status').textContent(), /無法使用剪貼簿/);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
@@ -93,6 +126,8 @@ test('Timestamp retains unit, current-time, validation, and responsive layout be
       assert.match(await page.locator('#datetime-result').textContent(), /請選擇日期與時間/);
       await page.locator('#use-now').click();
       await page.locator('#convert-datetime').click();
+      assert.match(await page.locator('#datetime-seconds').textContent(), /^\d+$/);
+      assert.match(await page.locator('#datetime-milliseconds').textContent(), /^\d+$/);
       const geometry = await page.evaluate(() => {
         const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
         return {
