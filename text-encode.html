@@ -30,8 +30,10 @@
         <div class="sql-in-options" aria-label="SQL IN 格式選項">
           <label><input id="sql-in-values-only" type="checkbox" /> 僅輸出值</label>
           <label><input id="sql-in-numeric" type="checkbox" /> 數字模式（不加引號）</label>
-          <button class="primary" id="format-sql-in">格式化</button>
-          <button id="clear-sql-in">清空</button>
+          <div class="sql-in-actions" aria-label="SQL IN 操作">
+            <button class="primary" id="format-sql-in">格式化</button>
+            <button id="clear-sql-in">清空</button>
+          </div>
         </div>
         <label class="editor-panel"><span>SQL 結果</span><textarea id="sql-in-output" spellcheck="false" readonly aria-label="SQL IN 格式化結果" placeholder="IN ('apple','banana')"></textarea></label>
         <p id="sql-in-error" class="error-message" role="alert"></p>
