@@ -36,10 +36,11 @@ test('Timestamp formats local time with presets while preserving UTC output', as
     assert.equal(await page.locator('#timestamp-format option').count(), 4);
     await page.locator('#timestamp-input').fill('0');
     await page.locator('#convert-timestamp').click();
-    const defaultResult = await page.locator('#timestamp-result').textContent();
-    assert.match(defaultResult, /^1970-01-01 \d{2}:00:00\nUTC：1970-01-01T00:00:00\.000Z$/);
+    assert.match(await page.locator('#timestamp-local-result').textContent(), /^1970-01-01 \d{2}:00:00$/);
+    assert.equal(await page.locator('#timestamp-utc-result').textContent(), '1970-01-01T00:00:00.000Z');
     await page.locator('#timestamp-format').selectOption('yyyy/MM/dd hh:mm:ss');
-    assert.match(await page.locator('#timestamp-result').textContent(), /^1970\/01\/01 \d{2}:00:00\nUTC：1970-01-01T00:00:00\.000Z$/);
+    assert.match(await page.locator('#timestamp-local-result').textContent(), /^1970\/01\/01 \d{2}:00:00$/);
+    assert.equal(await page.locator('#timestamp-utc-result').textContent(), '1970-01-01T00:00:00.000Z');
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
@@ -68,6 +69,10 @@ test('Timestamp defaults to milliseconds and copies displayed local and UTC resu
     await page.locator('#copy-timestamp-utc').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), utc);
     assert.equal(await page.locator('#timestamp-copy-status').textContent(), 'UTC 日期時間已複製');
+
+    await page.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('denied')); });
+    await page.locator('#copy-timestamp-local').click();
+    assert.match(await page.locator('#timestamp-copy-status').textContent(), /無法使用剪貼簿/);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
