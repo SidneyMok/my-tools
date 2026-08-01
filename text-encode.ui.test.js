@@ -101,6 +101,48 @@ test('SQL IN formatter is the first primary Text & Encode feature before Base64'
   assert.match(html, /<button[^>]*id="clear-sql-in"[^>]*>清空<\/button>/);
 });
 
+test('SQL IN format and clear actions form a bounded adjacent group at desktop and mobile widths', async () => {
+  const { server, url } = await serve();
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  try {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+      await page.goto(`${url}/text-encode.html`, { waitUntil: 'networkidle' });
+      const geometry = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
+        const group = rect('.sql-in-actions');
+        const format = rect('#format-sql-in');
+        const clear = rect('#clear-sql-in');
+        const options = rect('.sql-in-options');
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          group,
+          format,
+          clear,
+          options,
+          sameRow: Math.abs(format.top - clear.top) <= 1,
+          horizontalGap: clear.left - format.right
+        };
+      });
+
+      assert.equal(geometry.documentWidth, viewport.width);
+      assert.ok(geometry.group.left >= geometry.options.left && geometry.group.right <= geometry.options.right, 'action group stays within the options row');
+      assert.ok(geometry.format.left < geometry.clear.left, 'format action precedes clear action');
+      assert.ok(geometry.sameRow, 'desktop and mobile actions share a vertical baseline');
+      assert.ok(geometry.horizontalGap >= 6 && geometry.horizontalGap <= 16, 'actions use a deliberate bounded gap');
+      if (viewport.width > 720) {
+        assert.ok(geometry.group.width < geometry.options.width / 2, 'desktop actions occupy a compact group instead of opposite ends of the row');
+      } else {
+        assert.ok(geometry.group.width <= geometry.options.width, 'mobile action group remains horizontally contained');
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('Text & Encode keeps UUID controls aligned and modules separated at desktop and mobile widths', async () => {
   const { server, url } = await serve();
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
@@ -184,7 +226,9 @@ test('SQL IN clear resets only its workspace while preserving selected options a
     await page.locator('#sql-in-values-only').check();
     await page.locator('#sql-in-numeric').check();
     await page.locator('#sql-in-input').fill('1\n2.5');
-    await page.locator('#format-sql-in').click();
+    await page.locator('#format-sql-in').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#sql-in-output').inputValue(), '1,2.5');
     await page.locator('#copy-sql-in').click();
     await page.waitForFunction(() => document.querySelector('#text-encode-status').textContent === '已複製');
 
