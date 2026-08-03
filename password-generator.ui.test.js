@@ -29,12 +29,40 @@ async function withPage(run) {
   try { await run({ page, url }); } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 }
 
-test('password page defaults to a secure four-category 16-character password and provides navigation everywhere', async () => {
+test('shared top navigation keeps Password tab semantics on every tool page', async () => {
   await withPage(async ({ page, url }) => {
     for (const name of pages) {
       await page.goto(`${url}/${name}`);
-      assert.equal(await page.locator('nav a[href="password-generator.html"]').count(), 1, `${name} navigation`);
+      const navigation = await page.locator('nav').evaluate((nav) => Array.from(nav.querySelectorAll('a'), (link) => ({
+        href: link.getAttribute('href'),
+        label: link.textContent.trim(),
+        active: link.classList.contains('active'),
+        current: link.getAttribute('aria-current')
+      })));
+      assert.deepEqual(navigation.map(({ href, label }) => ({ href, label })), [
+        { href: 'index.html', label: 'JSON' },
+        { href: 'html-preview.html', label: 'HTML' },
+        { href: 'timestamp.html', label: 'Timestamp' },
+        { href: 'network.html', label: 'Network' },
+        { href: 'docx-email.html', label: 'Docx Email' },
+        { href: 'text-encode.html', label: 'Text & Encode' },
+        { href: 'password-generator.html', label: 'Password' }
+      ], `${name} navigation labels, hrefs, and order`);
+      const password = navigation.at(-1);
+      assert.deepEqual(password, {
+        href: 'password-generator.html',
+        label: 'Password',
+        active: name === 'password-generator.html',
+        current: name === 'password-generator.html' ? 'page' : null
+      }, `${name} password navigation`);
+      assert.equal(navigation.filter((link) => link.active).length, 1, `${name} has one active navigation item`);
+      assert.equal(navigation.filter((link) => link.current === 'page').length, 1, `${name} has one current-page navigation item`);
     }
+  });
+});
+
+test('password page defaults to a secure four-category 16-character password', async () => {
+  await withPage(async ({ page, url }) => {
     await page.goto(`${url}/password-generator.html`);
     const password = await page.locator('#password-output').inputValue();
     assert.equal(password.length, 16);
