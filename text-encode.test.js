@@ -24,17 +24,10 @@ test('SQL IN formatter escapes text values and supports values-only output', () 
   );
 });
 
-test('SQL IN formatter emits valid numeric values without quotes', () => {
+test('SQL IN formatter emits all retained values without quotes when requested', () => {
   assert.deepEqual(
-    formatSqlInList('  -12.5\n0\n1e3  ', { numeric: true }),
-    { output: 'IN (-12.5,0,1e3)', count: 3 }
-  );
-});
-
-test('SQL IN formatter rejects any invalid numeric value without partial output', () => {
-  assert.throws(
-    () => formatSqlInList('1\n2; DROP TABLE users\n3', { numeric: true }),
-    /第 2 行.*數字/
+    formatSqlInList('  TR0240\n\n550e8400-e29b-41d4-a716-446655440000\nCURRENT_DATE\n user_id  ', { noQuotes: true }),
+    { output: 'IN (TR0240,550e8400-e29b-41d4-a716-446655440000,CURRENT_DATE,user_id)', count: 4 }
   );
 });
 

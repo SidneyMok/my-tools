@@ -17,19 +17,12 @@ export function urlEncode(value) {
   return encodeURIComponent(value);
 }
 
-export function formatSqlInList(value, { valuesOnly = false, numeric = false } = {}) {
-  const values = value.split(/\r?\n/)
-    .map((line, index) => ({ value: line.trim(), line: index + 1 }))
-    .filter(({ value: item }) => item);
+export function formatSqlInList(value, { valuesOnly = false, noQuotes = false } = {}) {
+  const retainedValues = value.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-  if (numeric) {
-    const invalid = values.find(({ value: item }) => !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(item));
-    if (invalid) throw new Error(`第 ${invalid.line} 行不是有效數字。`);
-  }
-
-  const retainedValues = values.map(({ value: item }) => item);
-
-  const formattedValues = retainedValues.map((item) => numeric ? item : `'${item.replaceAll("'", "''")}'`);
+  const formattedValues = retainedValues.map((item) => noQuotes ? item : `'${item.replaceAll("'", "''")}'`);
   const list = formattedValues.join(',');
   return { output: valuesOnly ? list : `IN (${list})`, count: retainedValues.length };
 }
@@ -113,7 +106,7 @@ function initialiseTextEncodeTool() {
     try {
       const result = formatSqlInList(sqlInput.value, {
         valuesOnly: document.getElementById('sql-in-values-only').checked,
-        numeric: document.getElementById('sql-in-numeric').checked
+        noQuotes: document.getElementById('sql-in-no-quotes').checked
       });
       sqlOutput.value = result.output;
       sqlCount.textContent = `已包含 ${result.count} 個值`;

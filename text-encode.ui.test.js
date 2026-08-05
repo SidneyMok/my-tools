@@ -182,12 +182,14 @@ test('Text & Encode keeps UUID controls aligned and modules separated at desktop
   }
 });
 
-test('SQL IN formatter formats, counts, rejects invalid numeric input, and copies output', async () => {
+test('SQL IN formatter defaults to escaped quotes and accepts arbitrary unquoted values without errors', async () => {
   const { server, url } = await serve();
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   try {
     await page.goto(`${url}/text-encode.html`, { waitUntil: 'networkidle' });
+    assert.equal(await page.locator('#sql-in-no-quotes').isChecked(), false);
+    assert.equal(await page.locator('#sql-in-no-quotes').locator('xpath=..').textContent(), ' 不加引號');
     await page.locator('#sql-in-input').fill(" apple \n\nO'Reilly\n banana ");
     await page.locator('#format-sql-in').click();
     assert.equal(await page.locator('#sql-in-output').inputValue(), "IN ('apple','O''Reilly','banana')");
@@ -195,16 +197,13 @@ test('SQL IN formatter formats, counts, rejects invalid numeric input, and copie
     await page.locator('#sql-in-values-only').check();
     await page.locator('#format-sql-in').click();
     assert.equal(await page.locator('#sql-in-output').inputValue(), "'apple','O''Reilly','banana'");
-    await page.locator('#sql-in-numeric').check();
-    await page.locator('#sql-in-input').fill('1\n2.5\n-3e2');
+    await page.locator('#sql-in-no-quotes').check();
+    await page.locator('#sql-in-input').fill(' TR0240 \n\n550e8400-e29b-41d4-a716-446655440000\nCURRENT_DATE\nuser_id');
     await page.locator('#format-sql-in').click();
-    assert.equal(await page.locator('#sql-in-output').inputValue(), '1,2.5,-3e2');
-    await page.locator('#sql-in-input').fill('1\nDROP TABLE');
-    await page.locator('#format-sql-in').click();
-    assert.equal(await page.locator('#sql-in-output').inputValue(), '');
-    assert.match(await page.locator('#sql-in-error').textContent(), /第 2 行不是有效數字/);
+    assert.equal(await page.locator('#sql-in-output').inputValue(), 'TR0240,550e8400-e29b-41d4-a716-446655440000,CURRENT_DATE,user_id');
+    assert.equal(await page.locator('#sql-in-error').textContent(), '');
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
-    await page.locator('#sql-in-numeric').uncheck();
+    await page.locator('#sql-in-no-quotes').uncheck();
     await page.locator('#sql-in-values-only').uncheck();
     await page.locator('#sql-in-input').fill('apple\nbanana');
     await page.locator('#format-sql-in').click();
@@ -224,11 +223,11 @@ test('SQL IN clear resets only its workspace while preserving selected options a
     await page.goto(`${url}/text-encode.html`, { waitUntil: 'networkidle' });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
     await page.locator('#sql-in-values-only').check();
-    await page.locator('#sql-in-numeric').check();
-    await page.locator('#sql-in-input').fill('1\n2.5');
+    await page.locator('#sql-in-no-quotes').check();
+    await page.locator('#sql-in-input').fill('TR0240\nCURRENT_DATE');
     await page.locator('#format-sql-in').focus();
     await page.keyboard.press('Enter');
-    assert.equal(await page.locator('#sql-in-output').inputValue(), '1,2.5');
+    assert.equal(await page.locator('#sql-in-output').inputValue(), 'TR0240,CURRENT_DATE');
     await page.locator('#copy-sql-in').click();
     await page.waitForFunction(() => document.querySelector('#text-encode-status').textContent === '已複製');
 
@@ -239,20 +238,21 @@ test('SQL IN clear resets only its workspace while preserving selected options a
     assert.equal(await page.locator('#sql-in-count').textContent(), '已包含 0 個值');
     assert.equal(await page.locator('#text-encode-status').textContent(), '等待輸入');
     assert.equal(await page.locator('#sql-in-values-only').isChecked(), true);
-    assert.equal(await page.locator('#sql-in-numeric').isChecked(), true);
+    assert.equal(await page.locator('#sql-in-no-quotes').isChecked(), true);
     assert.equal(await page.locator('#sql-in-input').evaluate((element) => document.activeElement === element), true);
 
     await page.locator('#sql-in-input').fill('not a number');
     await page.locator('#format-sql-in').click();
-    assert.match(await page.locator('#sql-in-error').textContent(), /第 1 行不是有效數字/);
+    assert.equal(await page.locator('#sql-in-output').inputValue(), 'not a number');
+    assert.equal(await page.locator('#sql-in-error').textContent(), '');
     await page.locator('#clear-sql-in').focus();
     await page.keyboard.press('Space');
     assert.equal(await page.locator('#sql-in-error').textContent(), '');
     assert.equal(await page.locator('#text-encode-status').textContent(), '等待輸入');
 
-    await page.locator('#sql-in-input').fill('3\n4');
+    await page.locator('#sql-in-input').fill('TR0241\nCURRENT_TIMESTAMP');
     await page.locator('#format-sql-in').click();
-    assert.equal(await page.locator('#sql-in-output').inputValue(), '3,4');
+    assert.equal(await page.locator('#sql-in-output').inputValue(), 'TR0241,CURRENT_TIMESTAMP');
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
