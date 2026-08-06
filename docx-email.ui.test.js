@@ -34,22 +34,24 @@ async function withPage(run) {
   try { await run({ page, url }); } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 }
 
-async function uploadFixture(page) {
-  await page.locator('#docx-input').setInputFiles(path.join(root, 'fixtures/email-fidelity.docx'));
+async function uploadFixture(page, fixture = 'email-fidelity.docx') {
+  await page.locator('#docx-input').setInputFiles(path.join(root, `fixtures/${fixture}`));
   await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
 }
 
-test('docx email loads pinned tracked parser bundles locally, never from node_modules or an external origin', async () => {
+test('docx email loads only the local JSZip parser bundle, never an obsolete converter, node_modules, or an external origin', async () => {
   await withPage(async ({ page, url }) => {
     const requests = [];
     page.on('request', (request) => requests.push(request.url()));
     await page.goto(url);
-    assert.deepEqual(requests.filter((requestUrl) => /(?:jszip|mammoth)/i.test(requestUrl)).map((requestUrl) => new URL(requestUrl).pathname).sort(), [
-      '/vendor/jszip-3.10.1.min.js',
-      '/vendor/mammoth-1.11.0.browser.js'
+    assert.deepEqual(requests.filter((requestUrl) => /jszip/i.test(requestUrl)).map((requestUrl) => new URL(requestUrl).pathname), [
+      '/vendor/jszip-3.10.1.min.js'
     ]);
     assert.ok(requests.every((requestUrl) => new URL(requestUrl).origin === url));
     assert.ok(requests.every((requestUrl) => !new URL(requestUrl).pathname.startsWith('/node_modules/')));
+    const html = await (await fetch(`${url}/docx-email.html`)).text();
+    const pageModule = await (await fetch(`${url}/docx-email-page.js`)).text();
+    assert.doesNotMatch(`${html}\n${pageModule}`, new RegExp(['mam', 'moth'].join(''), 'i'));
   });
 });
 
@@ -159,7 +161,7 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     await uploadFixture(page);
     const source = await page.locator('#docx-source').inputValue();
     assert.match(source, /紅色 16pt 底線/);
-    assert.doesNotMatch(source, /<font\b|font-size\s*:|\ssize\s*=|<\/?p\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
+    assert.doesNotMatch(source, /font-size\s*:|\ssize\s*=|<\/?p\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
     assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
     assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
@@ -173,6 +175,23 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     await page.locator('#download-docx-html').click();
     const downloadBytes = await (await download).createReadStream().then(async (stream) => Buffer.concat(await (async () => { const chunks = []; for await (const chunk of stream) chunks.push(chunk); return chunks; })()));
     assert.equal(downloadBytes.toString('utf8'), source);
+  });
+});
+
+test('Docx Email preserves the source-runs artifact byte-for-byte across editor, preview, clipboard, and download', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    await uploadFixture(page, 'source-runs-email.docx');
+    const source = await page.locator('#docx-source').inputValue();
+    assert.match(source, /<font color="#a1b2c3">colour<\/font>/);
+    assert.match(source, /&lt;script&gt;bad\(\)&lt;\/script&gt;&lt;img src=x onerror=bad\(\)&gt;/);
+    assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
+    await page.locator('#copy-docx-html').click();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
+    const download = page.waitForEvent('download');
+    await page.locator('#download-docx-html').click();
+    const bytes = await (await download).createReadStream().then(async (stream) => Buffer.concat(await (async () => { const chunks = []; for await (const chunk of stream) chunks.push(chunk); return chunks; })()));
+    assert.equal(bytes.toString('utf8'), source);
   });
 });
 
@@ -350,6 +369,6 @@ test('all user-visible Docx Email labels use the exact product name and the page
   assert.match(docxPage, /title="Docx Email"/);
   assert.doesNotMatch(docxPage, /完全在此裝置轉換|僅限 \.docx|Mammoth 僅協助|圖片可在本機預覽|唯一輸出|隔離 iframe/);
   assert.match(docxPage, /src="vendor\/jszip-3\.10\.1\.min\.js"/);
-  assert.match(docxPage, /src="vendor\/mammoth-1\.11\.0\.browser\.js"/);
-  assert.doesNotMatch(docxPage, /node_modules|https?:\/\//);
+  assert.doesNotMatch(docxPage, /mammoth/i);
+  assert.doesNotMatch(docxPage, /node_modules|https?:\/\/|mammoth/i);
 });

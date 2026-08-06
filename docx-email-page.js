@@ -30,7 +30,7 @@ cancelCustom.addEventListener('click', resetCustomForm);
 customVariables = loadCustomVariables(); renderCatalog(); renderCustomVariables();
 input.addEventListener('change', async () => {
   const file = input.files?.[0]; if (!file) return; error.textContent = ''; warnings.textContent = ''; status.textContent = '正在轉換…'; await useArtifact('');
-  try { const result = await convertDocx(file, globalThis.mammoth); await useArtifact(result.html); status.textContent = '已轉換並消毒'; warnings.textContent = result.warnings.join(' '); } catch (reason) { await showFailure(reason.message); }
+  try { const result = await convertDocx(file); await useArtifact(result.html); status.textContent = '已轉換並消毒'; warnings.textContent = result.warnings.join(' '); } catch (reason) { await showFailure(reason.message); }
 });
 copy.addEventListener('click', async () => { if (!artifact) return; try { await navigator.clipboard.writeText(artifact); status.textContent = '已複製 HTML'; } catch { source.focus(); source.select(); document.execCommand('copy'); status.textContent = '已複製 HTML'; } });
 download.addEventListener('click', () => { if (!artifact) return; const url = URL.createObjectURL(new Blob([artifact], { type: 'text/html;charset=UTF-8' })); const link = document.createElement('a'); link.href = url; link.download = 'email-template.html'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); status.textContent = '已下載 HTML'; });

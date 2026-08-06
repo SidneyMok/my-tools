@@ -29,7 +29,7 @@ test('converts actual DOCX fixture without legacy font sizing markup while retai
   assert.match(html, /<table/);
   assert.match(html, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
   assert.match(html, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
-  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.doesNotMatch(html, /font-size\s*:|\ssize\s*=/i);
   assert.equal(sanitizeEmailHtml(html), html);
 });
 
@@ -38,11 +38,11 @@ test('converts the line-first DOCX fixture with one break per non-final source t
   const file = new File([content], 'line-first-email.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const { html } = await convertDocx(file);
 
-  assert.match(html, /<strong>第一行粗體<\/strong><br>第二行手動換行<br><span style="color:#ff0000">第三行紅色<\/span><br><a href="mailto:linked@example\.com"[^>]*>linked@example\.com<\/a><br><a href="mailto:plain@example\.com"[^>]*>plain@example\.com<\/a><br>\n<ul>\n  <li>清單一<\/li>\n  <li>清單二<\/li>\n<\/ul>\n<table/);
+  assert.match(html, /<strong>第一行粗體<\/strong><br>第二行手動換行<br><font color="#ff0000">第三行紅色<\/font><br><a href="mailto:linked@example\.com"[^>]*>linked@example\.com<\/a><br><a href="mailto:plain@example\.com"[^>]*>plain@example\.com<\/a><br>\n<ul>\n  <li>清單一<\/li>\n  <li>清單二<\/li>\n<\/ul>\n<table/);
   assert.match(html, /<td[^>]*>表格最後一行<\/td>/);
   assert.doesNotMatch(html, /表格最後一行<br>/);
   assert.equal((html.match(/<br>/g) || []).length, 5);
-  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.doesNotMatch(html, /font-size\s*:|\ssize\s*=/i);
   assert.equal(sanitizeEmailHtml(html), html);
 });
 
@@ -57,12 +57,26 @@ test('uses structural list and table boundaries instead of terminal container br
   assert.doesNotMatch(html, /<li>[^<]*<br><\/li>|cell-1B<br><\/td>/);
 });
 
-test('sanitizer strips legacy font elements, size attributes, and font-size declarations case-insensitively', () => {
-  const html = sanitizeEmailHtml('<FONT COLOR="#FF0000" SIZE="4">保費通知</FONT><span style="FONT-SIZE:16pt;color:#00AA00">續期保費</span><table size="3"><tr><td SIZE="2">表格內容</td></tr></table>');
-  assert.match(html, /保費通知/);
+test('fallback sanitizer removes active child markup inside canonical fonts when DOMParser is unavailable', () => {
+  const savedDomParser = globalThis.DOMParser;
+  try {
+    globalThis.DOMParser = undefined;
+    const html = sanitizeEmailHtml('<font color="#abcdef"><script>alert(1)</script><a href="javascript:evil()">unsafe</a><img src="data:text/html,evil"><img src="https://safe.example/image.png" onerror="evil()">safe &lt;img src=x onerror=bad()&gt;</font>');
+    assert.match(html, /^<font color="#abcdef"><a>unsafe<\/a><img><img src="https:\/\/safe\.example\/image\.png">safe &lt;img src=x onerror=bad\(\)&gt;<\/font>$/);
+    assert.doesNotMatch(html, /<script|javascript:|data:|onerror="evil\(\)"/i);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
+});
+
+test('sanitizer retains only canonical nonblack color-only font markup', () => {
+  const html = sanitizeEmailHtml('<FONT COLOR="#FF0000">保費通知</FONT><font color="#000000">black</font><font face="Arial" color="#00AA00">unsafe attributes</font><font color="#FF0000" size="4">sized font</font><span style="FONT-SIZE:16pt;color:#00AA00">續期保費</span><table size="3"><tr><td SIZE="2">表格內容</td></tr></table>');
+  assert.match(html, /<font color="#ff0000">保費通知<\/font>/);
+  assert.match(html, /black/);
+  assert.match(html, /unsafe attributessized font/);
   assert.match(html, /續期保費/);
   assert.match(html, /表格內容/);
-  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.doesNotMatch(html, /font-size\s*:|\ssize\s*=|<span|#000000|face=/i);
   assert.equal(sanitizeEmailHtml(html), html);
 });
 
@@ -75,7 +89,7 @@ test('converts reported insurance-notice DOCX fixture without legacy size markup
   assert.match(html, /<ul>\n  <li>注意事項一<\/li>\n  <li><u>注意事項二<\/u><\/li>\n<\/ul>/);
   assert.match(html, /<table/);
   assert.match(html, /<br>/);
-  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.doesNotMatch(html, /font-size\s*:|\ssize\s*=/i);
   assert.equal(sanitizeEmailHtml(html), html);
 });
 
@@ -86,7 +100,7 @@ test('Normal (Web) paragraph style is separate from legacy run-size conversion',
   const normalWeb = await render('<w:pStyle w:val="NormalWeb"/>');
   assert.equal(normalWeb, plain);
   assert.equal(normalWeb, 'Normal Web notice text');
-  assert.doesNotMatch(normalWeb, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.doesNotMatch(normalWeb, /font-size\s*:|\ssize\s*=/i);
 });
 
 test('OOXML bold emits strong only for enabled values', async () => {
@@ -157,4 +171,19 @@ test('rejects corrupt ZIP and ZIP files that lack word/document.xml', async () =
   const bytes = await new JSZip().file('note.txt', 'not a document').generateAsync({ type: 'nodebuffer' });
   const missingDocumentXml = new File([bytes], 'empty.docx');
   await assert.rejects(() => convertDocx(missingDocumentXml), /找不到 DOCX 文件內容/);
+});
+
+test('renders the source-runs DOCX fixture directly with canonical safe colour fonts', async () => {
+  const content = await readFile('./fixtures/source-runs-email.docx');
+  const file = new File([content], 'source-runs-email.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const { html, warnings } = await convertDocx(file);
+  assert.equal(warnings.length, 0);
+  assert.match(html, /normal&emsp;manual<br>break<br>carriage<br><strong>bold<\/strong><u>underline<\/u><font color="#a1b2c3">colour<\/font>black<font color="#ff0000"><u><strong>combined<\/strong><\/u><\/font><br>/);
+  assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;&lt;img src=x onerror=bad\(\)&gt;<a href="mailto:safe@example\.com"[^>]*>safe@example\.com<\/a>unsafe link<br>/);
+  assert.match(html, /<ul>\n  <li>list item<\/li>\n<\/ul>\n<table/);
+  assert.match(html, /<td[^>]*>cell first<br>cell final<\/td>/);
+  assert.doesNotMatch(html, /(?:<script|<img|javascript:|font-size|\ssize=)/i);
+  assert.match(html, /&lt;img src=x onerror=bad\(\)&gt;/);
+  assert.doesNotMatch(html, /cell final<br><\/td>|<li>[^<]*<br><\/li>/);
+  assert.equal(sanitizeEmailHtml(html), html);
 });

@@ -11,6 +11,6 @@
     "playwright": "1.57.0"
   },
   "dependencies": {
-    "mammoth": "^1.11.0"
+    "jszip": "^3.10.1"
   }
 }
