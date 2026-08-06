@@ -161,8 +161,8 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     assert.match(source, /紅色 16pt 底線/);
     assert.doesNotMatch(source, /<font\b|font-size\s*:|\ssize\s*=|<\/?p\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
-    assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<br><\/li><!--\n  --><li[^>]*>項目符號清單二<br><\/li><!--\n--><\/ul>/);
-    assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<br><\/li><!--\n  --><li[^>]*>編號清單二<br><\/li><!--\n--><\/ol>/);
+    assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
+    assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
     assert.match(source, /<!--\n--><table/);
     assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
     assert.equal(await page.locator('#docx-preview').contentFrame().locator('ul > li').count(), 2);

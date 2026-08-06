@@ -246,12 +246,11 @@ export async function renderDocxXml(arrayBuffer) {
   const body = documentXml.getElementsByTagNameNS(WORD_NS, 'body')[0];
   const sourceParagraphs = Array.from(body.getElementsByTagNameNS(WORD_NS, 'p')).filter((paragraph) => paragraphHtml(paragraph, links) !== '<br>');
   const lastVisibleParagraph = sourceParagraphs.at(-1);
-  const withBreak = (paragraph) => paragraphHtml(paragraph, links, paragraph !== lastVisibleParagraph);
   const blocks = []; let list = null;
   const flush = () => { if (list) { blocks.push(`<${list.type}>${list.items.join('')}</${list.type}>`); list = null; } };
   for (const node of Array.from(body.childNodes).filter((item) => item.nodeType === 1)) {
-    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = withBreak(node); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(value); } }
-    else if (node.localName === 'tbl') { flush(); blocks.push(`<table><tbody>${children(node, 'tr').map((row) => `<tr>${children(row, 'tc').map((cell) => `<td>${children(cell, 'p').map(withBreak).join('')}</td>`).join('')}</tr>`).join('')}</tbody></table>`); }
+    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = paragraphHtml(node, links, !type && node !== lastVisibleParagraph); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(value); } }
+    else if (node.localName === 'tbl') { flush(); blocks.push(`<table><tbody>${children(node, 'tr').map((row) => `<tr>${children(row, 'tc').map((cell) => { const paragraphs = children(cell, 'p'); return `<td>${paragraphs.map((paragraph, index) => paragraphHtml(paragraph, links, index < paragraphs.length - 1)).join('')}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`); }
   } flush(); return blocks.join('');
 }
 
