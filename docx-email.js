@@ -103,10 +103,12 @@ function serializeReadableElement(element, depth, writeLine, write) {
   const hasBlockChild = children.some((childNode) => childNode.nodeType === 1 && readableBlockTags.has(childNode.localName.toLowerCase()));
   for (const childNode of children) {
     if (childNode.nodeType === 3) {
-      // Newlines emitted by this formatter become whitespace-only DOM text nodes on reparse.
-      // Discard only those indentation nodes; inline content whitespace remains unchanged.
+      // Formatting comments are non-text DOM nodes after reparse. Discard only the old
+      // formatter's whitespace-only indentation nodes; inline content stays exact.
       if (hasBlockChild && /^\s*$/.test(childNode.nodeValue) && /[\r\n]/.test(childNode.nodeValue)) continue;
-      write(childNode.nodeValue);
+      write(esc(childNode.nodeValue));
+    } else if (childNode.nodeType === 8 && /^\n *$/.test(childNode.nodeValue)) {
+      continue;
     } else if (childNode.nodeType === 1) {
       const childTag = childNode.localName.toLowerCase();
       if (readableBlockTags.has(childTag)) writeLine(depth + 1);
@@ -126,14 +128,15 @@ export function prettyPrintEmailHtml(html) {
   let hasOutput = false;
   const write = (value) => { output.push(value); hasOutput ||= value.length > 0; };
   const writeLine = (depth) => {
-    if (hasOutput && !output.at(-1)?.endsWith('\n')) output.push('\n');
-    output.push('  '.repeat(depth));
+    if (hasOutput) output.push(`<!--\n${'  '.repeat(depth)}-->`);
   };
 
   for (const node of document.body.childNodes) {
     if (node.nodeType === 3) {
       if (/^\s*$/.test(node.nodeValue) && /[\r\n]/.test(node.nodeValue)) continue;
-      write(node.nodeValue);
+      write(esc(node.nodeValue));
+    } else if (node.nodeType === 8 && /^\n *$/.test(node.nodeValue)) {
+      continue;
     } else if (node.nodeType === 1) {
       if (readableBlockTags.has(node.localName.toLowerCase())) writeLine(0);
       serializeReadableElement(node, 0, writeLine, write);
