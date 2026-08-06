@@ -76,8 +76,8 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     assert.equal(await page.locator('#docx-preview').getAttribute('sandbox'), '');
     await uploadFixture(page);
     const source = await page.locator('#docx-source').inputValue();
-    assert.match(source, /<font color="#FF0000" size="4">/i);
-    assert.doesNotMatch(source, /<\/?p\b|<\/?span\b|font-size:|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
+    assert.match(source, /紅色 16pt 底線/);
+    assert.doesNotMatch(source, /<font\b|font-size\s*:|\ssize\s*=|<\/?p\b|<\/?span\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
     assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
     assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
@@ -140,6 +140,19 @@ test('Docx Email initial workspace has no reserved empty feedback space and rema
     assert.equal(layout.workspaceTop, layout.fileDropBottom);
     assert.ok(layout.workspaceTop < 190, `expected a compact initial workspace, got ${layout.workspaceTop}px`);
     assert.equal(layout.documentScrollWidth, layout.viewportWidth);
+  });
+});
+
+test('Docx Email insurance-notice preview has enough mobile height for its full sanitized content', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(url);
+    await page.locator('#docx-input').setInputFiles(path.join(root, 'fixtures/insurance-notice-font-sizing.docx'));
+    await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
+    const preview = page.locator('#docx-preview');
+    const frame = preview.contentFrame();
+    assert.ok(await frame.locator('table').count());
+    assert.equal(await preview.evaluate((iframe) => iframe.clientHeight), await frame.locator('html').evaluate((html) => html.scrollHeight));
   });
 });
 
