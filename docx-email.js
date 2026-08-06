@@ -52,7 +52,7 @@ function htmlTokens(html) {
   return tokens;
 }
 
-export function prettyPrintEmailHtml(html) {
+function prettyPrintEmailHtmlFallback(html) {
   const output = []; const stack = []; let depth = 0; let atLineStart = true; let lastWasStructuralClose = false;
   const write = (value) => { output.push(value); atLineStart = value.endsWith('\n'); };
   const line = (indent) => {
@@ -72,6 +72,75 @@ export function prettyPrintEmailHtml(html) {
     }
     if (structural) line(depth);
     write(token.value); if (token.type === 'open') stack.push(token.name); if (structural) depth += 1; lastWasStructuralClose = false;
+  }
+  return output.join('');
+}
+
+const readableBlockTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
+const readableVoidTags = new Set(['br', 'img']);
+
+function escapeAttribute(value) {
+  return value.replace(/[&<>"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]);
+}
+
+function serializeReadableElement(element, depth, writeLine, write) {
+  const tag = element.localName.toLowerCase();
+  const attributes = Array.from(element.attributes, (attribute) => ` ${attribute.name}="${escapeAttribute(attribute.value)}"`).join('');
+  const opening = `<${tag}${attributes}>`;
+  if (readableVoidTags.has(tag)) {
+    write(opening);
+    return;
+  }
+
+  write(opening);
+  if (tag === 'pre') {
+    write(element.innerHTML);
+    write(`</${tag}>`);
+    return;
+  }
+
+  const children = Array.from(element.childNodes);
+  const hasBlockChild = children.some((childNode) => childNode.nodeType === 1 && readableBlockTags.has(childNode.localName.toLowerCase()));
+  for (const childNode of children) {
+    if (childNode.nodeType === 3) {
+      // Formatting comments are non-text DOM nodes after reparse. Discard only the old
+      // formatter's whitespace-only indentation nodes; inline content stays exact.
+      if (hasBlockChild && /^\s*$/.test(childNode.nodeValue) && /[\r\n]/.test(childNode.nodeValue)) continue;
+      write(esc(childNode.nodeValue));
+    } else if (childNode.nodeType === 8 && /^\n *$/.test(childNode.nodeValue)) {
+      continue;
+    } else if (childNode.nodeType === 1) {
+      const childTag = childNode.localName.toLowerCase();
+      if (readableBlockTags.has(childTag)) writeLine(depth + 1);
+      serializeReadableElement(childNode, depth + 1, writeLine, write);
+    }
+  }
+  if (hasBlockChild) writeLine(depth);
+  write(`</${tag}>`);
+}
+
+// The final artifact is parsed after sanitization, then serialized from its DOM tree. This makes
+// structural formatting deterministic without inserting text nodes into inline content flow.
+export function prettyPrintEmailHtml(html) {
+  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtmlFallback(html);
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  const output = [];
+  let hasOutput = false;
+  const write = (value) => { output.push(value); hasOutput ||= value.length > 0; };
+  const writeLine = (depth) => {
+    if (hasOutput) output.push(`<!--\n${'  '.repeat(depth)}-->`);
+  };
+
+  for (const node of document.body.childNodes) {
+    if (node.nodeType === 3) {
+      if (/^\s*$/.test(node.nodeValue) && /[\r\n]/.test(node.nodeValue)) continue;
+      write(esc(node.nodeValue));
+    } else if (node.nodeType === 8 && /^\n *$/.test(node.nodeValue)) {
+      continue;
+    } else if (node.nodeType === 1) {
+      if (readableBlockTags.has(node.localName.toLowerCase())) writeLine(0);
+      serializeReadableElement(node, 0, writeLine, write);
+    }
   }
   return output.join('');
 }

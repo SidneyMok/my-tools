@@ -70,6 +70,88 @@ test('Docx Email browser DOMParser sanitizer strips target styles and is byte-id
   });
 });
 
+test('Docx Email DOM-tree formatter preserves rendered text while emitting deterministic readable structure', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { prettyPrintEmailHtml } = await import('./docx-email.js');
+      const source = '<strong>標題</strong><br><em>第一行</em><br><br><ul><li>項目 <u>一</u></li><li>項目二</li></ul><table><tbody><tr><th>欄位</th><td>值</td></tr></tbody></table>';
+      const formatted = prettyPrintEmailHtml(source);
+      const measure = (html) => {
+        const frame = document.createElement('iframe');
+        frame.srcdoc = `<style>body { margin: 0; font: 16px Arial; white-space: normal; } table { border-collapse: collapse; } th, td { padding: 0; }</style>${html}`;
+        document.body.append(frame);
+        const body = frame.contentDocument.body;
+        const nodes = Array.from(body.querySelectorAll('strong, em, ul, li, table, tbody, tr, th, td'));
+        const geometry = nodes.map((node) => {
+          const rect = node.getBoundingClientRect();
+          return [node.localName, rect.x, rect.y, rect.width, rect.height];
+        });
+        const result = { geometry, scrollHeight: body.scrollHeight, scrollWidth: body.scrollWidth };
+        frame.remove();
+        return result;
+      };
+      return { source, formatted, sourceLayout: measure(source), formattedLayout: measure(formatted), twice: prettyPrintEmailHtml(formatted) };
+    });
+    assert.equal(result.formatted, `<strong>標題</strong><br><em>第一行</em><br><br><!--
+--><ul><!--
+  --><li>項目 <u>一</u></li><!--
+  --><li>項目二</li><!--
+--></ul><!--
+--><table><!--
+  --><tbody><!--
+    --><tr><!--
+      --><th>欄位</th><!--
+      --><td>值</td><!--
+    --></tr><!--
+  --></tbody><!--
+--></table>`);
+    assert.deepEqual(result.formattedLayout, result.sourceLayout);
+    assert.equal(result.twice, result.formatted);
+  });
+});
+
+test('Docx Email DOM-tree formatter escapes literal markup and does not add whitespace nodes at inline-to-structure boundaries', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { prettyPrintEmailHtml } = await import('./docx-email.js');
+      const source = '<strong>A</strong><ul><li>B</li></ul><table><tbody><tr><td>C</td></tr></tbody></table>&lt;script&gt;literal&lt;/script&gt;&lt;img src=x onerror=evil()&gt;';
+      const formatted = prettyPrintEmailHtml(source);
+      const parsed = new DOMParser().parseFromString(formatted, 'text/html');
+      const render = async (whiteSpace) => {
+        const frame = document.createElement('iframe');
+        const loaded = new Promise((resolve) => frame.addEventListener('load', resolve, { once: true }));
+        frame.srcdoc = `<style>body { margin: 0; font: 16px Arial; white-space: ${whiteSpace}; } table { border-collapse: collapse; } td { padding: 0; }</style>${formatted}`;
+        document.body.append(frame);
+        await loaded;
+        const value = { text: frame.contentDocument.body.textContent, height: frame.contentDocument.body.scrollHeight };
+        frame.remove();
+        return value;
+      };
+      return {
+        formatted,
+        scripts: parsed.querySelectorAll('script').length,
+        images: parsed.querySelectorAll('img').length,
+        text: parsed.body.textContent,
+        textNodes: Array.from(parsed.body.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.nodeValue),
+        preWrap: await render('pre-wrap'),
+        preLine: await render('pre-line'),
+        twice: prettyPrintEmailHtml(formatted)
+      };
+    });
+    assert.match(result.formatted, /&lt;script&gt;literal&lt;\/script&gt;/);
+    assert.match(result.formatted, /&lt;img src=x onerror=evil\(\)&gt;/);
+    assert.equal(result.scripts, 0);
+    assert.equal(result.images, 0);
+    assert.equal(result.text, 'ABC<script>literal</script><img src=x onerror=evil()>');
+    assert.deepEqual(result.textNodes, ['<script>literal</script><img src=x onerror=evil()>']);
+    assert.equal(result.preWrap.text, result.text);
+    assert.equal(result.preLine.text, result.text);
+    assert.equal(result.twice, result.formatted);
+  });
+});
+
 test('Docx Email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
@@ -79,9 +161,9 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     assert.match(source, /紅色 16pt 底線/);
     assert.doesNotMatch(source, /<font\b|font-size\s*:|\ssize\s*=|<\/?p\b|<\/?span\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
-    assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
-    assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
-    assert.match(source, /\n<table/);
+    assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
+    assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
+    assert.match(source, /<!--\n--><table/);
     assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
     assert.equal(await page.locator('#docx-preview').contentFrame().locator('ul > li').count(), 2);
     assert.equal(await page.locator('#docx-preview').contentFrame().locator('ol > li').count(), 2);
