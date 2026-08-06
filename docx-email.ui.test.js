@@ -143,6 +143,19 @@ test('Docx Email initial workspace has no reserved empty feedback space and rema
   });
 });
 
+test('Docx Email insurance-notice preview has enough mobile height for its full sanitized content', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(url);
+    await page.locator('#docx-input').setInputFiles(path.join(root, 'fixtures/insurance-notice-font-sizing.docx'));
+    await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
+    const preview = page.locator('#docx-preview');
+    const frame = preview.contentFrame();
+    assert.ok(await frame.locator('table').count());
+    assert.equal(await preview.evaluate((iframe) => iframe.clientHeight), await frame.locator('html').evaluate((html) => html.scrollHeight));
+  });
+});
+
 test('Docx Email keeps the source editor and mail preview at the same workspace height on desktop', async () => {
   await withPage(async ({ page, url }) => {
     await page.setViewportSize({ width: 1200, height: 900 });
