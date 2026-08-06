@@ -76,9 +76,8 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     assert.equal(await page.locator('#docx-preview').getAttribute('sandbox'), '');
     await uploadFixture(page);
     const source = await page.locator('#docx-source').inputValue();
-    assert.match(source, /color:#FF0000/i);
-    assert.match(source, /font-size:16pt/i);
-    assert.doesNotMatch(source, /(?:font-family|line-height):|font-size:14px|color:(?:#17211f|#000(?:000)?|black)/i);
+    assert.match(source, /<font color="#FF0000" size="4">/i);
+    assert.doesNotMatch(source, /<\/?p\b|<\/?span\b|font-size:|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
     assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
     assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);

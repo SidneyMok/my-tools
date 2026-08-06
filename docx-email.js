@@ -2,13 +2,12 @@ export const MAX_DOCX_BYTES = 10 * 1024 * 1024;
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
-const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img']);
-const allowedStyleProperties = new Set(['color', 'font-size', 'font-family', 'line-height', 'text-decoration', 'font-weight', 'font-style', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
+const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'font', 'img']);
+const allowedStyleProperties = new Set(['color', 'font-family', 'line-height', 'text-decoration', 'font-weight', 'font-style', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
   if (!clean || /(?:url\s*\(|expression\s*\(|@import|behavior|javascript:|data:|vbscript:)/i.test(clean)) return false;
   if (property === 'color') return /^(?:#[0-9a-f]{3,8}|rgb\([\d\s,.%]+\)|[a-z]+)$/i.test(clean);
-  if (property === 'font-size') return /^(?:[\d.]+(?:px|pt|em|rem|%)|small|medium|large)$/i.test(clean);
   if (property === 'font-family') return /^[\w\s,"'-]+$/i.test(clean);
   if (property === 'line-height') return /^[\d.]+(?:px|pt|em|rem|%)?$/i.test(clean);
   if (property === 'font-weight') return /^(?:normal|bold|[1-9]00)$/i.test(clean);
@@ -31,7 +30,7 @@ const isDefaultColor = (value) => {
   const channels = [1, 3, 5].map((index) => Number(rgb[index]) * (rgb[index + 1] === '%' ? 2.55 : 1));
   return channels.every((channel, index) => Math.abs(channel - [23, 33, 31][index]) < 0.01) || channels.every((channel) => channel === 0);
 };
-const isDefaultStyle = (property, value) => property === 'font-family' || property === 'line-height' || (property === 'font-size' && value === '14px') || (property === 'color' && isDefaultColor(value));
+const isDefaultStyle = (property, value) => property === 'font-family' || property === 'line-height' || (property === 'color' && isDefaultColor(value));
 const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).map(([property, styleValue]) => [property?.trim().toLowerCase(), styleValue?.trim()]).filter(([property, styleValue]) => allowedStyleProperties.has(property) && safeStyleValue(property, styleValue || '') && !isDefaultStyle(property, styleValue)).map(([property, styleValue]) => `${property}:${styleValue}`).join(';');
 const esc = (text) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
 const structuralTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
@@ -95,7 +94,7 @@ export function validateDocxFile(file) {
 export async function assertDocxSignature(file) { const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer()); return bytes.length === 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04; }
 
 export function sanitizeEmailHtml(dirty) {
-  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed)\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
+  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed|p|span)\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*|\sfont-size\s*:[^;"']*;?/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
   for (const element of [...doc.body.querySelectorAll('*')]) {
     const tag = element.tagName.toLowerCase();
@@ -105,7 +104,7 @@ export function sanitizeEmailHtml(dirty) {
       if (name === 'style') { const sanitized = sanitizeStyle(attribute.value); if (sanitized) element.setAttribute('style', sanitized); else element.removeAttribute('style'); }
       if (name.startsWith('on') || name === 'id' || name === 'class' || name === 'srcset') element.removeAttribute(attribute.name);
       if ((name === 'href' || name === 'src') && !safeUrl(attribute.value)) element.removeAttribute(attribute.name);
-      if (!['href', 'src', 'alt', 'title', 'style', 'colspan', 'rowspan'].includes(name)) element.removeAttribute(attribute.name);
+      if (!['href', 'src', 'alt', 'title', 'style', 'colspan', 'rowspan', 'color', 'size'].includes(name)) element.removeAttribute(attribute.name);
     }
     if (tag === 'a' && element.hasAttribute('href')) { element.setAttribute('target', '_blank'); element.setAttribute('rel', 'noopener noreferrer'); }
   }
@@ -117,7 +116,23 @@ export function sanitizeEmailHtml(dirty) {
     const existing = (cell.getAttribute('style') || '').split(';').filter((declaration) => declaration && !/^(?:border|padding|vertical-align):/i.test(declaration));
     cell.setAttribute('style', [...existing, 'border:1px solid #dce4df', 'padding:8px', 'vertical-align:top'].join(';'));
   }
-  return prettyPrintEmailHtml(doc.body.innerHTML.trim());
+  for (const span of [...doc.body.querySelectorAll('span')]) {
+    const style = span.getAttribute('style') || '';
+    const color = /(?:^|;)color:([^;]+)/i.exec(style)?.[1];
+    if (color) {
+      const font = doc.createElement('font');
+      font.setAttribute('color', color);
+      span.replaceWith(font);
+      font.append(...span.childNodes);
+    } else span.replaceWith(...span.childNodes);
+  }
+  const paragraphs = [...doc.body.querySelectorAll('p')];
+  for (const paragraph of paragraphs) {
+    const next = paragraph.nextElementSibling;
+    paragraph.replaceWith(...paragraph.childNodes, ...(next ? [doc.createElement('br'), doc.createElement('br')] : []));
+  }
+  const output = doc.body.innerHTML.trim().replace(/(?:<br>\s*){3,}/gi, '<br><br>');
+  return prettyPrintEmailHtml(output);
 }
 
 function runHtml(run) {
@@ -125,9 +140,9 @@ function runHtml(run) {
   const text = [...run.childNodes].map((node) => node.localName === 't' ? esc(node.textContent) : node.localName === 'tab' ? '&emsp;' : node.localName === 'br' || node.localName === 'cr' ? '<br>' : '').join('');
   if (!text) return '';
   const styles = []; const color = attr(child(properties, 'color'), 'val'); const size = attr(child(properties, 'sz'), 'val');
-  if (/^[0-9a-f]{6}$/i.test(color)) styles.push(`color:#${color}`);
-  if (/^\d+$/.test(size || '')) styles.push(`font-size:${Number(size) / 2}pt`);
-  let output = styles.length ? `<span style="${styles.join(';')}">${text}</span>` : text;
+  if (/^[0-9a-f]{6}$/i.test(color)) styles.push(`color="#${color}"`);
+  if (/^\d+$/.test(size || '')) styles.push(`size="${Math.max(1, Math.min(7, Math.round(Number(size) / 8)))}"`);
+  let output = styles.length ? `<font ${styles.join(' ')}>${text}</font>` : text;
   if (enabledOoxmlBoolean(child(properties, 'b'))) output = `<strong>${output}</strong>`;
   if (child(properties, 'i')) output = `<em>${output}</em>`;
   if (child(properties, 'u') && attr(child(properties, 'u'), 'val') !== 'none') output = `<u>${output}</u>`;
@@ -162,9 +177,9 @@ export async function renderDocxXml(arrayBuffer) {
   const blocks = []; let list = null;
   const flush = () => { if (list) { blocks.push(`<${list.type}>${list.items.join('')}</${list.type}>`); list = null; } };
   for (const node of Array.from(documentXml.getElementsByTagNameNS(WORD_NS, 'body')[0].childNodes).filter((item) => item.nodeType === 1)) {
-    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = paragraphHtml(node, links); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(`<p>${value}</p>`); } }
+    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = paragraphHtml(node, links); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(value); } }
     else if (node.localName === 'tbl') { flush(); blocks.push(`<table><tbody>${children(node, 'tr').map((row) => `<tr>${children(row, 'tc').map((cell) => `<td>${children(cell, 'p').map((p) => paragraphHtml(p, links)).join('<br>')}</td>`).join('')}</tr>`).join('')}</tbody></table>`); }
-  } flush(); return blocks.join('');
+  } flush(); return blocks.join('<br><br>');
 }
 
 export async function convertDocx(file, mammoth) {

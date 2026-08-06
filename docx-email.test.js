@@ -21,9 +21,9 @@ test('converts actual DOCX fixture without default styles while retaining non-de
   const content = await readFile('./fixtures/email-fidelity.docx');
   const file = new File([content], 'email-fidelity.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const { html } = await convertDocx(file);
-  assert.match(html, /color:#FF0000/i);
-  assert.match(html, /font-size:16pt/);
-  assert.match(html, /<u><span[^>]*>紅色 16pt 底線<\/span><\/u>/);
+  assert.match(html, /color="#FF0000"/i);
+  assert.match(html, /size="4"/);
+  assert.match(html, /<u><font[^>]*>紅色 16pt 底線<\/font><\/u>/);
   assert.match(html, /<s><em><strong>/);
   assert.match(html, /<br>/);
   assert.match(html, /href="https:\/\/example.com"/);
@@ -33,6 +33,15 @@ test('converts actual DOCX fixture without default styles while retaining non-de
   assert.doesNotMatch(html, /(?:font-family|line-height):/i);
   assert.doesNotMatch(html, /font-size:14px/i);
   assert.doesNotMatch(html, /color:(?:#17211f|#000(?:000)?|black)/i);
+});
+
+test('converts paragraphs and run styling to editable email markup without p, span, or font-size', async () => {
+  const content = await readFile('./fixtures/email-fidelity.docx');
+  const file = new File([content], 'email-fidelity.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const { html } = await convertDocx(file);
+  assert.doesNotMatch(html, /<\/?p\b|<\/?span\b|font-size:/i);
+  assert.match(html, /<u><font color="#FF0000" size="4">紅色 16pt 底線<\/font><\/u>/i);
+  assert.equal(sanitizeEmailHtml(html), html);
 });
 
 test('OOXML bold emits strong only for enabled values', async () => {
@@ -60,15 +69,12 @@ test('pretty printer preserves preformatted content byte-for-byte for future all
   assert.equal(prettyPrintEmailHtml(output), output);
 });
 
-test('sanitizer strips default styles while retaining conservative non-default email-safe styles and link schemes', () => {
+test('sanitizer removes styles while retaining conservative safe links', () => {
   const html = sanitizeEmailHtml('<p style="color:#123456;font-size:16pt;font-family:Arial, sans-serif;line-height:1.6;font-weight:700;font-style:italic;text-decoration:underline;position:fixed;display:none;--custom:x;background:url(https://evil);margin:0">內容<a href="https://example.com">https</a><a href="http://example.com">http</a><a href="mailto:hello@example.com">mail</a><a href="javascript:evil()">js</a><a href="data:text/html,x">data</a><a href="vbscript:evil">vbs</a></p>');
-  assert.match(html, /color:#123456/i);
-  assert.match(html, /font-size:16pt/i);
-  assert.match(html, /font-weight:700/i);
   assert.match(html, /href="https:\/\/example\.com"/);
   assert.match(html, /href="http:\/\/example\.com"/);
   assert.match(html, /href="mailto:hello@example\.com"/);
-  assert.doesNotMatch(html, /font-family|line-height|position|display|--custom|background|url\(|javascript:|data:|vbscript:/i);
+  assert.doesNotMatch(html, /font-family|line-height|font-size|color:|font-weight|position|display|--custom|background|url\(|javascript:|data:|vbscript:/i);
 });
 
 test('sanitizer removes every target declaration including default black equivalents and remains byte-idempotent', () => {
@@ -76,8 +82,7 @@ test('sanitizer removes every target declaration including default black equival
   const first = sanitizeEmailHtml(input);
   assert.doesNotMatch(first, /(?:font-family|line-height):/i);
   assert.doesNotMatch(first, /font-size:14px|color:(?:#17211f|#000(?:000)?|black)/i);
-  assert.match(first, /font-size:16pt/i);
-  assert.match(first, /color:red/i);
+  assert.doesNotMatch(first, /font-size:|color:/i);
   assert.equal(sanitizeEmailHtml(first), first);
 });
 
