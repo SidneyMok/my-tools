@@ -33,6 +33,30 @@ test('converts actual DOCX fixture without legacy font sizing markup while retai
   assert.equal(sanitizeEmailHtml(html), html);
 });
 
+test('converts the line-first DOCX fixture with one break per non-final source text line', async () => {
+  const content = await readFile('./fixtures/line-first-email.docx');
+  const file = new File([content], 'line-first-email.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const { html } = await convertDocx(file);
+
+  assert.match(html, /<strong>第一行粗體<\/strong><br>第二行手動換行<br><span style="color:#ff0000">第三行紅色<\/span><br><a href="mailto:linked@example\.com"[^>]*>linked@example\.com<\/a><br><a href="mailto:plain@example\.com"[^>]*>plain@example\.com<\/a><br>\n<ul>\n  <li>清單一<\/li>\n  <li>清單二<\/li>\n<\/ul>\n<table/);
+  assert.match(html, /<td[^>]*>表格最後一行<\/td>/);
+  assert.doesNotMatch(html, /表格最後一行<br>/);
+  assert.equal((html.match(/<br>/g) || []).length, 5);
+  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.equal(sanitizeEmailHtml(html), html);
+});
+
+test('uses structural list and table boundaries instead of terminal container breaks', async () => {
+  const xml = `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>body line</w:t></w:r></w:p><w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>list one</w:t></w:r></w:p><w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>nested list item</w:t></w:r></w:p><w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>list two</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>cell-1A</w:t></w:r></w:p><w:p><w:r><w:t>cell-1B</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`;
+  const numbering = `<?xml version="1.0"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl><w:lvl w:ilvl="1"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>`;
+  const bytes = await new JSZip().file('word/document.xml', xml).file('word/numbering.xml', numbering).generateAsync({ type: 'arraybuffer' });
+  const html = await renderDocxXml(bytes);
+
+  assert.match(html, /^body line<br><ul><li>list one<\/li><li>nested list item<\/li><li>list two<\/li><\/ul><table/);
+  assert.match(html, /<td>cell-1A<br>cell-1B<\/td>/);
+  assert.doesNotMatch(html, /<li>[^<]*<br><\/li>|cell-1B<br><\/td>/);
+});
+
 test('sanitizer strips legacy font elements, size attributes, and font-size declarations case-insensitively', () => {
   const html = sanitizeEmailHtml('<FONT COLOR="#FF0000" SIZE="4">保費通知</FONT><span style="FONT-SIZE:16pt;color:#00AA00">續期保費</span><table size="3"><tr><td SIZE="2">表格內容</td></tr></table>');
   assert.match(html, /保費通知/);

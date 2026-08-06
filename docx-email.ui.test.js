@@ -159,7 +159,7 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     await uploadFixture(page);
     const source = await page.locator('#docx-source').inputValue();
     assert.match(source, /紅色 16pt 底線/);
-    assert.doesNotMatch(source, /<font\b|font-size\s*:|\ssize\s*=|<\/?p\b|<\/?span\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
+    assert.doesNotMatch(source, /<font\b|font-size\s*:|\ssize\s*=|<\/?p\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
     assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
     assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
@@ -222,6 +222,27 @@ test('Docx Email initial workspace has no reserved empty feedback space and rema
     assert.equal(layout.workspaceTop, layout.fileDropBottom);
     assert.ok(layout.workspaceTop < 190, `expected a compact initial workspace, got ${layout.workspaceTop}px`);
     assert.equal(layout.documentScrollWidth, layout.viewportWidth);
+  });
+});
+
+test('Docx Email does not report conversion complete before a delayed mobile preview has loaded', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.addInitScript(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'srcdoc');
+      Object.defineProperty(HTMLIFrameElement.prototype, 'srcdoc', {
+        configurable: true,
+        get() { return descriptor.get.call(this); },
+        set(value) { setTimeout(() => descriptor.set.call(this, value), 100); }
+      });
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(url);
+    await page.locator('#docx-input').setInputFiles(path.join(root, 'fixtures/line-first-email.docx'));
+    await page.waitForTimeout(30);
+    assert.equal(await page.locator('#docx-status').textContent(), '正在轉換…');
+    await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
+    const frame = page.locator('#docx-preview').contentFrame();
+    assert.match(await frame.locator('body').innerText(), /第一行粗體/);
   });
 });
 
@@ -312,6 +333,7 @@ test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over
     await page.locator('#docx-status').filter({ hasText: '無法轉換' }).waitFor();
     assert.match(await page.locator('#docx-error').textContent(), /找不到 DOCX 文件內容|Could not find main document part/);
     await page.locator('#docx-input').setInputFiles({ name: 'large.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
+    await page.locator('#docx-error').filter({ hasText: '超過 10 MB' }).waitFor();
     assert.match(await page.locator('#docx-error').textContent(), /超過 10 MB/);
   });
 });
