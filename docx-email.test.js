@@ -17,31 +17,52 @@ test('validates DOCX extension, signature, and configured size limit', async () 
   assert.equal(await assertDocxSignature(new File([Buffer.from('not a zip')], 'bad.docx')), false);
 });
 
-test('converts actual DOCX fixture without default styles while retaining non-default color, size, underline and core email formatting', async () => {
+test('converts actual DOCX fixture without legacy font sizing markup while retaining core email structure and semantics', async () => {
   const content = await readFile('./fixtures/email-fidelity.docx');
   const file = new File([content], 'email-fidelity.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const { html } = await convertDocx(file);
-  assert.match(html, /color="#FF0000"/i);
-  assert.match(html, /size="4"/);
-  assert.match(html, /<u><font[^>]*>紅色 16pt 底線<\/font><\/u>/);
+  assert.match(html, /紅色 16pt 底線/);
+  assert.match(html, /<u>紅色 16pt 底線<\/u>/);
   assert.match(html, /<s><em><strong>/);
   assert.match(html, /<br>/);
   assert.match(html, /href="https:\/\/example.com"/);
   assert.match(html, /<table/);
   assert.match(html, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
   assert.match(html, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
-  assert.doesNotMatch(html, /(?:font-family|line-height):/i);
-  assert.doesNotMatch(html, /font-size:14px/i);
-  assert.doesNotMatch(html, /color:(?:#17211f|#000(?:000)?|black)/i);
+  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.equal(sanitizeEmailHtml(html), html);
 });
 
-test('converts paragraphs and run styling to editable email markup without p, span, or font-size', async () => {
-  const content = await readFile('./fixtures/email-fidelity.docx');
-  const file = new File([content], 'email-fidelity.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const { html } = await convertDocx(file);
-  assert.doesNotMatch(html, /<\/?p\b|<\/?span\b|font-size:/i);
-  assert.match(html, /<u><font color="#FF0000" size="4">紅色 16pt 底線<\/font><\/u>/i);
+test('sanitizer strips legacy font elements, size attributes, and font-size declarations case-insensitively', () => {
+  const html = sanitizeEmailHtml('<FONT COLOR="#FF0000" SIZE="4">保費通知</FONT><span style="FONT-SIZE:16pt;color:#00AA00">續期保費</span><table size="3"><tr><td SIZE="2">表格內容</td></tr></table>');
+  assert.match(html, /保費通知/);
+  assert.match(html, /續期保費/);
+  assert.match(html, /表格內容/);
+  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
   assert.equal(sanitizeEmailHtml(html), html);
+});
+
+test('converts reported insurance-notice DOCX fixture without legacy size markup', async () => {
+  const content = await readFile('./fixtures/insurance-notice-font-sizing.docx');
+  const file = new File([content], 'insurance-notice-font-sizing.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const { html } = await convertDocx(file);
+  for (const text of ['保單續期繳費通知', '保單號碼：${policyNo}', '應繳保費：${premiumPayable}', '請於到期日前完成繳費。', '注意事項一', '注意事項二', '客服專線']) assert.match(html, new RegExp(text.replace(/[${}]/g, '\\$&')));
+  assert.match(html, /<strong>保單續期繳費通知<\/strong>/);
+  assert.match(html, /<ul>\n  <li>注意事項一<\/li>\n  <li><u>注意事項二<\/u><\/li>\n<\/ul>/);
+  assert.match(html, /<table/);
+  assert.match(html, /<br>/);
+  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.equal(sanitizeEmailHtml(html), html);
+});
+
+test('Normal (Web) paragraph style is separate from legacy run-size conversion', async () => {
+  const documentXml = (style) => `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr>${style}</w:pPr><w:r><w:t>Normal Web notice text</w:t></w:r></w:p></w:body></w:document>`;
+  const render = async (style) => renderDocxXml(await new JSZip().file('word/document.xml', documentXml(style)).generateAsync({ type: 'arraybuffer' }));
+  const plain = await render('');
+  const normalWeb = await render('<w:pStyle w:val="NormalWeb"/>');
+  assert.equal(normalWeb, plain);
+  assert.equal(normalWeb, 'Normal Web notice text');
+  assert.doesNotMatch(normalWeb, /<font\b|font-size\s*:|\ssize\s*=/i);
 });
 
 test('OOXML bold emits strong only for enabled values', async () => {

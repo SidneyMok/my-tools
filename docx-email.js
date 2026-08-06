@@ -2,7 +2,7 @@ export const MAX_DOCX_BYTES = 10 * 1024 * 1024;
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
-const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'font', 'img']);
+const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img']);
 const allowedStyleProperties = new Set(['color', 'font-family', 'line-height', 'text-decoration', 'font-weight', 'font-style', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
@@ -94,8 +94,9 @@ export function validateDocxFile(file) {
 export async function assertDocxSignature(file) { const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer()); return bytes.length === 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04; }
 
 export function sanitizeEmailHtml(dirty) {
-  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed|p|span)\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*|\sfont-size\s*:[^;"']*;?/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
+  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed|p|span)\b[^>]*>|<\/?font\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*|\ssize\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\sfont-size\s*:[^;"']*;?/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
+  for (const font of [...doc.body.querySelectorAll('font')]) font.replaceWith(...font.childNodes);
   for (const element of [...doc.body.querySelectorAll('*')]) {
     const tag = element.tagName.toLowerCase();
     if (!allowed.has(tag) || /^(script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(tag)) { element.remove(); continue; }
@@ -104,7 +105,7 @@ export function sanitizeEmailHtml(dirty) {
       if (name === 'style') { const sanitized = sanitizeStyle(attribute.value); if (sanitized) element.setAttribute('style', sanitized); else element.removeAttribute('style'); }
       if (name.startsWith('on') || name === 'id' || name === 'class' || name === 'srcset') element.removeAttribute(attribute.name);
       if ((name === 'href' || name === 'src') && !safeUrl(attribute.value)) element.removeAttribute(attribute.name);
-      if (!['href', 'src', 'alt', 'title', 'style', 'colspan', 'rowspan', 'color', 'size'].includes(name)) element.removeAttribute(attribute.name);
+      if (!['href', 'src', 'alt', 'title', 'style', 'colspan', 'rowspan'].includes(name)) element.removeAttribute(attribute.name);
     }
     if (tag === 'a' && element.hasAttribute('href')) { element.setAttribute('target', '_blank'); element.setAttribute('rel', 'noopener noreferrer'); }
   }
@@ -116,16 +117,7 @@ export function sanitizeEmailHtml(dirty) {
     const existing = (cell.getAttribute('style') || '').split(';').filter((declaration) => declaration && !/^(?:border|padding|vertical-align):/i.test(declaration));
     cell.setAttribute('style', [...existing, 'border:1px solid #dce4df', 'padding:8px', 'vertical-align:top'].join(';'));
   }
-  for (const span of [...doc.body.querySelectorAll('span')]) {
-    const style = span.getAttribute('style') || '';
-    const color = /(?:^|;)color:([^;]+)/i.exec(style)?.[1];
-    if (color) {
-      const font = doc.createElement('font');
-      font.setAttribute('color', color);
-      span.replaceWith(font);
-      font.append(...span.childNodes);
-    } else span.replaceWith(...span.childNodes);
-  }
+  for (const span of [...doc.body.querySelectorAll('span')]) span.replaceWith(...span.childNodes);
   const paragraphs = [...doc.body.querySelectorAll('p')];
   for (const paragraph of paragraphs) {
     const next = paragraph.nextElementSibling;
@@ -139,10 +131,7 @@ function runHtml(run) {
   const properties = child(run, 'rPr');
   const text = [...run.childNodes].map((node) => node.localName === 't' ? esc(node.textContent) : node.localName === 'tab' ? '&emsp;' : node.localName === 'br' || node.localName === 'cr' ? '<br>' : '').join('');
   if (!text) return '';
-  const styles = []; const color = attr(child(properties, 'color'), 'val'); const size = attr(child(properties, 'sz'), 'val');
-  if (/^[0-9a-f]{6}$/i.test(color)) styles.push(`color="#${color}"`);
-  if (/^\d+$/.test(size || '')) styles.push(`size="${Math.max(1, Math.min(7, Math.round(Number(size) / 8)))}"`);
-  let output = styles.length ? `<font ${styles.join(' ')}>${text}</font>` : text;
+  let output = text;
   if (enabledOoxmlBoolean(child(properties, 'b'))) output = `<strong>${output}</strong>`;
   if (child(properties, 'i')) output = `<em>${output}</em>`;
   if (child(properties, 'u') && attr(child(properties, 'u'), 'val') !== 'none') output = `<u>${output}</u>`;
