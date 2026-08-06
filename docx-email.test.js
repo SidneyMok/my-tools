@@ -83,6 +83,26 @@ test('formats sanitized HTML deterministically without changing text-node whites
   assert.equal(sanitizeEmailHtml(first), first);
 });
 
+test('formats the sanitized artifact through a DOM tree in source order without creating rendered whitespace', () => {
+  const source = '<strong>標題</strong><br><em>第一行</em><br><br><ul><li>項目 <u>一</u></li><li>項目二</li></ul><table><tbody><tr><th>欄位</th><td>值</td></tr></tbody></table>';
+  const formatted = prettyPrintEmailHtml(source);
+
+  assert.equal(formatted, `<strong>標題</strong><br><em>第一行</em><br><br>
+<ul>
+  <li>項目 <u>一</u></li>
+  <li>項目二</li>
+</ul>
+<table>
+  <tbody>
+    <tr>
+      <th>欄位</th>
+      <td>值</td>
+    </tr>
+  </tbody>
+</table>`);
+  assert.equal(prettyPrintEmailHtml(formatted), formatted);
+});
+
 test('pretty printer preserves preformatted content byte-for-byte for future allowlist support', () => {
   const input = '<pre>  first\n    <code>literal &lt;tag&gt;</code>\n  last  </pre><p>after</p>';
   const output = prettyPrintEmailHtml(input);

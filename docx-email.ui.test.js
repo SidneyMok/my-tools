@@ -70,6 +70,47 @@ test('Docx Email browser DOMParser sanitizer strips target styles and is byte-id
   });
 });
 
+test('Docx Email DOM-tree formatter preserves rendered text while emitting deterministic readable structure', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { prettyPrintEmailHtml } = await import('./docx-email.js');
+      const source = '<strong>標題</strong><br><em>第一行</em><br><br><ul><li>項目 <u>一</u></li><li>項目二</li></ul><table><tbody><tr><th>欄位</th><td>值</td></tr></tbody></table>';
+      const formatted = prettyPrintEmailHtml(source);
+      const measure = (html) => {
+        const frame = document.createElement('iframe');
+        frame.srcdoc = `<style>body { margin: 0; font: 16px Arial; white-space: normal; } table { border-collapse: collapse; } th, td { padding: 0; }</style>${html}`;
+        document.body.append(frame);
+        const body = frame.contentDocument.body;
+        const nodes = Array.from(body.querySelectorAll('strong, em, ul, li, table, tbody, tr, th, td'));
+        const geometry = nodes.map((node) => {
+          const rect = node.getBoundingClientRect();
+          return [node.localName, rect.x, rect.y, rect.width, rect.height];
+        });
+        const result = { geometry, scrollHeight: body.scrollHeight, scrollWidth: body.scrollWidth };
+        frame.remove();
+        return result;
+      };
+      return { source, formatted, sourceLayout: measure(source), formattedLayout: measure(formatted), twice: prettyPrintEmailHtml(formatted) };
+    });
+    assert.equal(result.formatted, `<strong>標題</strong><br><em>第一行</em><br><br>
+<ul>
+  <li>項目 <u>一</u></li>
+  <li>項目二</li>
+</ul>
+<table>
+  <tbody>
+    <tr>
+      <th>欄位</th>
+      <td>值</td>
+    </tr>
+  </tbody>
+</table>`);
+    assert.deepEqual(result.formattedLayout, result.sourceLayout);
+    assert.equal(result.twice, result.formatted);
+  });
+});
+
 test('Docx Email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
