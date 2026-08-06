@@ -27,8 +27,21 @@ test('converts actual DOCX fixture without legacy font sizing markup while retai
   assert.match(html, /<br>/);
   assert.match(html, /href="https:\/\/example.com"/);
   assert.match(html, /<table/);
-  assert.match(html, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
-  assert.match(html, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
+  assert.match(html, /<ul>\n  <li[^>]*>項目符號清單一<br><\/li>\n  <li[^>]*>項目符號清單二<br><\/li>\n<\/ul>/);
+  assert.match(html, /<ol>\n  <li[^>]*>編號清單一<br><\/li>\n  <li[^>]*>編號清單二<br><\/li>\n<\/ol>/);
+  assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
+  assert.equal(sanitizeEmailHtml(html), html);
+});
+
+test('converts the line-first DOCX fixture with one break per non-final source text line', async () => {
+  const content = await readFile('./fixtures/line-first-email.docx');
+  const file = new File([content], 'line-first-email.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const { html } = await convertDocx(file);
+
+  assert.match(html, /<strong>第一行粗體<\/strong><br>第二行手動換行<br><span style="color:#ff0000">第三行紅色<\/span><br><a href="mailto:linked@example\.com"[^>]*>linked@example\.com<\/a><br><a href="mailto:plain@example\.com"[^>]*>plain@example\.com<\/a><br>\n<ul>\n  <li>清單一<br><\/li>\n  <li>清單二<br><\/li>\n<\/ul>\n<table/);
+  assert.match(html, /<td[^>]*>表格最後一行<\/td>/);
+  assert.doesNotMatch(html, /表格最後一行<br>/);
+  assert.equal((html.match(/<br>/g) || []).length, 7);
   assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);
   assert.equal(sanitizeEmailHtml(html), html);
 });
@@ -48,7 +61,7 @@ test('converts reported insurance-notice DOCX fixture without legacy size markup
   const { html } = await convertDocx(file);
   for (const text of ['保單續期繳費通知', '保單號碼：${policyNo}', '應繳保費：${premiumPayable}', '請於到期日前完成繳費。', '注意事項一', '注意事項二', '客服專線']) assert.match(html, new RegExp(text.replace(/[${}]/g, '\\$&')));
   assert.match(html, /<strong>保單續期繳費通知<\/strong>/);
-  assert.match(html, /<ul>\n  <li>注意事項一<\/li>\n  <li><u>注意事項二<\/u><\/li>\n<\/ul>/);
+  assert.match(html, /<ul>\n  <li>注意事項一<br><\/li>\n  <li><u>注意事項二<\/u><br><\/li>\n<\/ul>/);
   assert.match(html, /<table/);
   assert.match(html, /<br>/);
   assert.doesNotMatch(html, /<font\b|font-size\s*:|\ssize\s*=/i);

@@ -3,16 +3,11 @@ const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
 const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img']);
-const allowedStyleProperties = new Set(['color', 'font-family', 'line-height', 'text-decoration', 'font-weight', 'font-style', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
+const allowedStyleProperties = new Set(['color', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
   if (!clean || /(?:url\s*\(|expression\s*\(|@import|behavior|javascript:|data:|vbscript:)/i.test(clean)) return false;
-  if (property === 'color') return /^(?:#[0-9a-f]{3,8}|rgb\([\d\s,.%]+\)|[a-z]+)$/i.test(clean);
-  if (property === 'font-family') return /^[\w\s,"'-]+$/i.test(clean);
-  if (property === 'line-height') return /^[\d.]+(?:px|pt|em|rem|%)?$/i.test(clean);
-  if (property === 'font-weight') return /^(?:normal|bold|[1-9]00)$/i.test(clean);
-  if (property === 'font-style') return /^(?:normal|italic|oblique)$/i.test(clean);
-  if (property === 'text-decoration') return /^(?:none|underline|line-through)(?:\s+(?:underline|line-through))?$/i.test(clean);
+  if (property === 'color') return /^#[0-9a-f]{6}$/i.test(clean);
   if (property === 'text-align') return /^(?:left|right|center|justify)$/i.test(clean);
   if (property === 'vertical-align') return /^(?:top|middle|bottom|baseline)$/i.test(clean);
   if (property === 'border-collapse') return /^(?:collapse|separate)$/i.test(clean);
@@ -30,8 +25,8 @@ const isDefaultColor = (value) => {
   const channels = [1, 3, 5].map((index) => Number(rgb[index]) * (rgb[index + 1] === '%' ? 2.55 : 1));
   return channels.every((channel, index) => Math.abs(channel - [23, 33, 31][index]) < 0.01) || channels.every((channel) => channel === 0);
 };
-const isDefaultStyle = (property, value) => property === 'font-family' || property === 'line-height' || (property === 'color' && isDefaultColor(value));
-const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).map(([property, styleValue]) => [property?.trim().toLowerCase(), styleValue?.trim()]).filter(([property, styleValue]) => allowedStyleProperties.has(property) && safeStyleValue(property, styleValue || '') && !isDefaultStyle(property, styleValue)).map(([property, styleValue]) => `${property}:${styleValue}`).join(';');
+const isDefaultStyle = (property, value) => property === 'color' && isDefaultColor(value);
+const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).map(([property, styleValue]) => [property?.trim().toLowerCase(), styleValue?.trim()]).filter(([property, styleValue]) => allowedStyleProperties.has(property) && safeStyleValue(property, styleValue || '') && !isDefaultStyle(property, styleValue)).map(([property, styleValue]) => `${property}:${property === 'color' ? styleValue.toLowerCase() : styleValue}`).join(';');
 const esc = (text) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
 const structuralTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
 const formattingContainers = new Set(['ol', 'ul', 'table', 'thead', 'tbody', 'tr']);
@@ -163,7 +158,7 @@ export function validateDocxFile(file) {
 export async function assertDocxSignature(file) { const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer()); return bytes.length === 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04; }
 
 export function sanitizeEmailHtml(dirty) {
-  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed|p|span)\b[^>]*>|<\/?font\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*|\ssize\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\sfont-size\s*:[^;"']*;?/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
+  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed|p)\b[^>]*>|<\/?font\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*|\ssize\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\sfont-size\s*:[^;"']*;?/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
   for (const font of [...doc.body.querySelectorAll('font')]) font.replaceWith(...font.childNodes);
   for (const element of [...doc.body.querySelectorAll('*')]) {
@@ -186,7 +181,9 @@ export function sanitizeEmailHtml(dirty) {
     const existing = (cell.getAttribute('style') || '').split(';').filter((declaration) => declaration && !/^(?:border|padding|vertical-align):/i.test(declaration));
     cell.setAttribute('style', [...existing, 'border:1px solid #dce4df', 'padding:8px', 'vertical-align:top'].join(';'));
   }
-  for (const span of [...doc.body.querySelectorAll('span')]) span.replaceWith(...span.childNodes);
+  for (const span of [...doc.body.querySelectorAll('span')]) {
+    if (!span.getAttribute('style')) span.replaceWith(...span.childNodes);
+  }
   const paragraphs = [...doc.body.querySelectorAll('p')];
   for (const paragraph of paragraphs) {
     const next = paragraph.nextElementSibling;
@@ -196,7 +193,7 @@ export function sanitizeEmailHtml(dirty) {
   return prettyPrintEmailHtml(output);
 }
 
-function runHtml(run) {
+function runHtml(run, linkify = true) {
   const properties = child(run, 'rPr');
   const text = [...run.childNodes].map((node) => node.localName === 't' ? esc(node.textContent) : node.localName === 'tab' ? '&emsp;' : node.localName === 'br' || node.localName === 'cr' ? '<br>' : '').join('');
   if (!text) return '';
@@ -205,12 +202,26 @@ function runHtml(run) {
   if (child(properties, 'i')) output = `<em>${output}</em>`;
   if (child(properties, 'u') && attr(child(properties, 'u'), 'val') !== 'none') output = `<u>${output}</u>`;
   if (child(properties, 'strike') || child(properties, 'dstrike')) output = `<s>${output}</s>`;
-  return output;
+  const color = attr(child(properties, 'color'), 'val');
+  if (/^[0-9a-f]{6}$/i.test(color || '') && !/^0{6}$/i.test(color)) output = `<span style="color:#${color.toLowerCase()}">${output}</span>`;
+  return linkify ? mailtoPlainEmail(output) : output;
 }
-function paragraphHtml(paragraph, links) {
-  let content = ''; for (const node of Array.from(paragraph.childNodes).filter((item) => item.nodeType === 1)) { if (node.localName === 'r') content += runHtml(node); else if (node.localName === 'hyperlink') { const href = links.get(node.getAttributeNS(REL_NS, 'id')); const runs = children(node, 'r').map(runHtml).join(''); content += safeUrl(href) ? `<a href="${esc(href)}">${runs}</a>` : runs; } }
-  return content || '<br>';
+function mailtoPlainEmail(html) {
+  return html.replace(/(^|>)([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})(?=<|$)/gi, (_match, prefix, email) => `${prefix}<a href="mailto:${email}">${email}</a>`);
 }
+function paragraphHtml(paragraph, links, trailingBreak = false) {
+  let content = '';
+  for (const node of Array.from(paragraph.childNodes).filter((item) => item.nodeType === 1)) {
+    if (node.localName === 'r') content += runHtml(node);
+    else if (node.localName === 'hyperlink') {
+      const href = links.get(node.getAttributeNS(REL_NS, 'id'));
+      const runs = children(node, 'r').map((run) => runHtml(run, false)).join('');
+      content += safeUrl(href) ? `<a href="${esc(href)}">${runs}</a>` : runs;
+    }
+  }
+  return `${content || '<br>'}${trailingBreak ? '<br>' : ''}`;
+}
+
 function numberingTypes(numberingXml) {
   const abstractTypes = new Map();
   for (const abstractNum of Array.from(numberingXml.getElementsByTagNameNS(WORD_NS, 'abstractNum'))) {
@@ -232,12 +243,16 @@ export async function renderDocxXml(arrayBuffer) {
   const numberingText = await zip.file('word/numbering.xml')?.async('string') || '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>';
   const XmlParser = globalThis.DOMParser || (await import('@xmldom/xmldom')).DOMParser; const parser = new XmlParser(); const documentXml = parser.parseFromString(xml, 'application/xml'); const relsXml = parser.parseFromString(relsText, 'application/xml'); const links = new Map(Array.from(relsXml.getElementsByTagName('Relationship')).map((item) => [item.getAttribute('Id'), item.getAttribute('Target')]));
   const listTypes = numberingTypes(parser.parseFromString(numberingText, 'application/xml'));
+  const body = documentXml.getElementsByTagNameNS(WORD_NS, 'body')[0];
+  const sourceParagraphs = Array.from(body.getElementsByTagNameNS(WORD_NS, 'p')).filter((paragraph) => paragraphHtml(paragraph, links) !== '<br>');
+  const lastVisibleParagraph = sourceParagraphs.at(-1);
+  const withBreak = (paragraph) => paragraphHtml(paragraph, links, paragraph !== lastVisibleParagraph);
   const blocks = []; let list = null;
   const flush = () => { if (list) { blocks.push(`<${list.type}>${list.items.join('')}</${list.type}>`); list = null; } };
-  for (const node of Array.from(documentXml.getElementsByTagNameNS(WORD_NS, 'body')[0].childNodes).filter((item) => item.nodeType === 1)) {
-    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = paragraphHtml(node, links); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(value); } }
-    else if (node.localName === 'tbl') { flush(); blocks.push(`<table><tbody>${children(node, 'tr').map((row) => `<tr>${children(row, 'tc').map((cell) => `<td>${children(cell, 'p').map((p) => paragraphHtml(p, links)).join('<br>')}</td>`).join('')}</tr>`).join('')}</tbody></table>`); }
-  } flush(); return blocks.join('<br><br>');
+  for (const node of Array.from(body.childNodes).filter((item) => item.nodeType === 1)) {
+    if (node.localName === 'p') { const num = child(child(node, 'pPr'), 'numPr'); const numId = attr(child(num, 'numId'), 'val'); const format = listTypes.get(numId)?.get(attr(child(num, 'ilvl'), 'val') || '0'); const type = num ? (format === 'bullet' ? 'ul' : format ? 'ol' : null) : null; const value = withBreak(node); if (type) { if (!list || list.type !== type || list.numId !== numId) { flush(); list = { type, numId, items: [] }; } list.items.push(`<li>${value}</li>`); } else { flush(); blocks.push(value); } }
+    else if (node.localName === 'tbl') { flush(); blocks.push(`<table><tbody>${children(node, 'tr').map((row) => `<tr>${children(row, 'tc').map((cell) => `<td>${children(cell, 'p').map(withBreak).join('')}</td>`).join('')}</tr>`).join('')}</tbody></table>`); }
+  } flush(); return blocks.join('');
 }
 
 export async function convertDocx(file, mammoth) {
