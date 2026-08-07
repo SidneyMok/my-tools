@@ -328,32 +328,58 @@ test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over
   });
 });
 
-test('Docx Email previews the exact mutable Traditional Chinese artifact through a UTF-8 blob and recovers from blocked popups', async () => {
+test('Docx Email opens the mutable UTF-8 artifact in a new popup whose shell and sandboxed content have no opener access', async () => {
   await withPage(async ({ page, url }) => {
-    await page.addInitScript(() => {
-      window.__previewCalls = [];
-      window.__objectUrls = new Map();
-      URL.createObjectURL = (blob) => { const url = `blob:preview-${window.__objectUrls.size}`; window.__objectUrls.set(url, blob); return url; };
-      URL.revokeObjectURL = (url) => window.__objectUrls.delete(url);
-      window.open = (...args) => { window.__previewCalls.push(args); return { addEventListener() {} }; };
-    });
     await page.goto(url);
     assert.equal(await page.locator('#docx-preview').count(), 0);
     assert.equal(await page.locator('.preview-side').count(), 0);
     assert.equal(await page.locator('#open-docx-preview').isDisabled(), true);
     await uploadFixture(page);
-    const current = '<h1>繁體中文預覽</h1><p>保單：${policyNo}</p>';
+    const current = '<h1>繁體中文預覽</h1><p>保單：${policyNo}</p><script>window.top.__docxPreviewAttack = true; if (window.opener) window.opener.__docxPreviewAttack = true;</script>';
+    await page.locator('#docx-source').fill(current);
+    const popupEvent = page.waitForEvent('popup');
+    await page.locator('#open-docx-preview').click();
+    const popup = await popupEvent;
+    await popup.locator('iframe[data-docx-preview]').waitFor();
+    const frame = popup.locator('iframe[data-docx-preview]').contentFrame();
+    await frame.locator('h1').waitFor();
+    assert.equal(await popup.evaluate(() => window.opener), null);
+    assert.equal(await frame.locator('body').evaluate(() => window.opener), null);
+    assert.equal(await frame.locator('body').evaluate(() => document.characterSet.toLowerCase()), 'utf-8');
+    assert.equal(await frame.locator('h1').textContent(), '繁體中文預覽');
+    assert.equal(await page.evaluate(() => window.__docxPreviewAttack), undefined);
+    assert.match(await page.locator('#docx-status').textContent(), /已在新視窗/);
+    await popup.close();
+  });
+});
+
+test('Docx Email revokes a preview Blob URL only after its isolated frame loads and recovers from popup failures', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.addInitScript(() => {
+      window.__previewRevocations = [];
+      window.__previewLoad = null;
+      URL.createObjectURL = () => 'blob:preview-test';
+      URL.revokeObjectURL = (value) => window.__previewRevocations.push(value);
+      window.open = () => ({
+        opener: window,
+        document: {
+          open() {}, write() {}, close() {},
+          querySelector() { return { addEventListener(type, listener) { if (type === 'load') window.__previewLoad = listener; }, set src(value) { window.__previewUrl = value; } }; }
+        }
+      });
+    });
+    await page.goto(url);
+    await uploadFixture(page);
+    const current = '<h1>延遲載入的繁體中文預覽</h1>';
     await page.locator('#docx-source').fill(current);
     await page.locator('#open-docx-preview').click();
-    const preview = await page.evaluate(async () => {
-      const args = window.__previewCalls[0]; const blob = window.__objectUrls.get(args[0]);
-      return { args, type: blob.type, text: await blob.text() };
-    });
-    assert.match(preview.args[0], /^blob:preview-/);
-    assert.deepEqual(preview.args.slice(1), ['_blank']);
-    assert.equal(preview.type, 'text/html;charset=utf-8');
-    assert.equal(preview.text, current);
-    assert.match(await page.locator('#docx-status').textContent(), /已在新視窗/);
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), []);
+    await page.waitForTimeout(100);
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), []);
+    await page.evaluate(() => window.__previewLoad());
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), ['blob:preview-test']);
+    await page.evaluate(() => window.__previewLoad());
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), ['blob:preview-test']);
     await page.evaluate(() => { window.open = () => null; });
     await page.locator('#open-docx-preview').click();
     assert.match(await page.locator('#docx-status').textContent(), /無法開啟預覽/);

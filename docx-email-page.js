@@ -38,17 +38,19 @@ preview.addEventListener('click', () => {
   let revoked = false;
   const revoke = () => { if (!revoked) { revoked = true; URL.revokeObjectURL(url); } };
   try {
-    const popup = window.open(url, '_blank');
+    // Open a trusted neutral shell under the click activation, then isolate the editable
+    // HTML in an opaque-origin frame. Never give editor HTML a same-origin popup or opener.
+    const popup = window.open('', '_blank');
     if (!popup) throw new Error('blocked');
-    if (!popup.location && typeof popup.document?.write === 'function') {
-      popup.document.open?.();
-      popup.document.write(artifact);
-      popup.document.close?.();
-      revoke();
-    } else if (typeof popup.addEventListener === 'function') {
-      popup.addEventListener('load', revoke, { once: true });
-    }
-    setTimeout(revoke, 60_000);
+    popup.opener = null;
+    if (typeof popup.document?.write !== 'function') throw new Error('unavailable');
+    popup.document.open?.();
+    popup.document.write('<!doctype html><meta charset="UTF-8"><title>Docx Email 預覽</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0}iframe{display:block}</style><iframe data-docx-preview sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>');
+    popup.document.close?.();
+    const frame = popup.document.querySelector?.('iframe[data-docx-preview]');
+    if (!frame) throw new Error('unavailable');
+    frame.addEventListener('load', revoke, { once: true });
+    frame.src = url;
     error.textContent = '';
     status.textContent = '已在新視窗開啟預覽';
   } catch {
