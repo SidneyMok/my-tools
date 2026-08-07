@@ -2,7 +2,7 @@ export const MAX_DOCX_BYTES = 10 * 1024 * 1024;
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
-const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img', 'font']);
+const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img', 'font', 'pre', 'code']);
 const allowedStyleProperties = new Set(['color', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
@@ -31,6 +31,9 @@ const esc = (text) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '
 const structuralTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
 const readableBlockTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
 const readableVoidTags = new Set(['br', 'img']);
+const meaningfulDocumentComments = (document) => Array.from(document.childNodes)
+  .filter((node) => node.nodeType === 8 && node.nodeValue.trim())
+  .map((node) => `<!--${node.nodeValue}-->`);
 
 // Tokenize the already-sanitized, conservative HTML subset without rewriting text or
 // attribute values. A DOM serializer would add whitespace to mixed inline content;
@@ -138,7 +141,11 @@ export function prettyPrintEmailHtml(html) {
     else { output.push(value); boundary = output.length - 1; }
   };
 
-  for (const node of document.body.childNodes) {
+  const nodes = [
+    ...meaningfulDocumentComments(document).map((value) => ({ nodeType: 8, nodeValue: value.slice(4, -3) })),
+    ...document.body.childNodes
+  ];
+  for (const node of nodes) {
     if (node.nodeType === 3) {
       if (/^\s*$/.test(node.nodeValue) && /[\r\n]/.test(node.nodeValue)) continue;
       const followsBreak = node.previousSibling?.nodeType === 1 && node.previousSibling.localName.toLowerCase() === 'br';
@@ -206,6 +213,7 @@ export function sanitizeEmailHtml(dirty) {
     return prettyPrintEmailHtml(cleaned.replace(/@@ESCAPED(\d+)@@/g, (_match, index) => escaped[index]).replace(/@@COMMENT(\d+)@@/g, (_match, index) => `<!--${comments[index]}-->`));
   }
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
+  const leadingComments = meaningfulDocumentComments(doc).join('');
   for (const element of [...doc.body.querySelectorAll('*')]) {
     const tag = element.tagName.toLowerCase();
     if (!allowed.has(tag) || /^(script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(tag)) { element.remove(); continue; }
@@ -239,7 +247,7 @@ export function sanitizeEmailHtml(dirty) {
     const next = paragraph.nextElementSibling;
     paragraph.replaceWith(...paragraph.childNodes, ...(next ? [doc.createElement('br'), doc.createElement('br')] : []));
   }
-  const output = doc.body.innerHTML.trim().replace(/(?:<br>\s*){3,}/gi, '<br><br>');
+  const output = `${leadingComments}${doc.body.innerHTML.trim()}`.replace(/(?:<br>\s*){3,}/gi, '<br><br>');
   return prettyPrintEmailHtml(output);
 }
 

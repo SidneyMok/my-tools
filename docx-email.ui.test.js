@@ -72,6 +72,22 @@ test('Docx Email browser DOMParser sanitizer strips target styles and is byte-id
   });
 });
 
+test('Docx Email browser sanitizer preserves legal top-level comments and preformatted literal content', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
+      const input = '<!--法務核准：{{name}} 的保費通知--><pre>  first\n    <code>literal &lt;tag&gt;</code>\n  last  </pre><script>evil()</script>';
+      const output = sanitizeEmailHtml(input);
+      return { output, twice: sanitizeEmailHtml(output), formatted: prettyPrintEmailHtml(input.replace(/<script>[\s\S]*?<\/script>/, '')) };
+    });
+    const expected = '<!--法務核准：{{name}} 的保費通知-->\n<pre>  first\n    <code>literal &lt;tag&gt;</code>\n  last  </pre>';
+    assert.equal(result.output, expected);
+    assert.equal(result.twice, expected);
+    assert.equal(result.formatted, expected);
+  });
+});
+
 test('Docx Email DOM-tree formatter preserves rendered text while emitting deterministic readable structure', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
