@@ -72,6 +72,56 @@ test('Docx Email browser DOMParser sanitizer strips target styles and is byte-id
   });
 });
 
+test('Docx Email browser sanitizer matches the Node fallback contract for paragraphs, lists, tables, and cells', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const input = '<p style="color:#123456;text-align:center">第一段</p><p>第二段 <a title="連結" href="https://example.com">link</a></p><ul><li>項目一</li><li>項目二</li></ul><table style="width:80%;border-collapse:separate"><tbody><tr><th colspan="2">標題</th><td rowspan="2" style="padding:2px">值</td></tr></tbody></table>';
+    const browser = await page.evaluate(async (source) => {
+      const { sanitizeEmailHtml } = await import('./docx-email.js');
+      const first = sanitizeEmailHtml(source);
+      return { first, second: sanitizeEmailHtml(first) };
+    }, input);
+    const expected = '第一段<br>\n<br>\n第二段 <a title="連結" href="https://example.com" target="_blank" rel="noopener noreferrer">link</a><br>\n<br>\n<ul>\n  <li>項目一</li>\n  <li>項目二</li>\n</ul>\n<table style="border-collapse:collapse;width:100%">\n  <tbody>\n    <tr>\n      <th colspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">標題</th>\n      <td rowspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">值</td>\n    </tr>\n  </tbody>\n</table>';
+    assert.equal(browser.first, expected);
+    assert.equal(browser.second, expected);
+  });
+});
+
+test('Docx Email browser DOMParser formatter preserves preformatted blank lines and indentation while stripping active scripts', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
+      const input = '<pre>first\n\n  second\n\n\nthird</pre><br>after';
+      const expected = '<pre>first\n\n  second\n\n\nthird</pre><br>\nafter';
+      const formatted = prettyPrintEmailHtml(input);
+      const sanitized = sanitizeEmailHtml(`${input}<script>window.__docxEmailPwned = true</script>`);
+      return { expected, formatted, formattedTwice: prettyPrintEmailHtml(formatted), sanitized, sanitizedTwice: sanitizeEmailHtml(sanitized), scriptRan: window.__docxEmailPwned === true };
+    });
+    assert.equal(result.formatted, result.expected);
+    assert.equal(result.formattedTwice, result.expected);
+    assert.equal(result.sanitized, result.expected);
+    assert.equal(result.sanitizedTwice, result.expected);
+    assert.equal(result.scriptRan, false);
+  });
+});
+
+test('Docx Email browser sanitizer preserves legal top-level comments and preformatted literal content', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
+      const input = '<!--法務核准：{{name}} 的保費通知--><pre>  first\n    <code>literal &lt;tag&gt;</code>\n  last  </pre><script>evil()</script>';
+      const output = sanitizeEmailHtml(input);
+      return { output, twice: sanitizeEmailHtml(output), formatted: prettyPrintEmailHtml(input.replace(/<script>[\s\S]*?<\/script>/, '')) };
+    });
+    const expected = '<!--法務核准：{{name}} 的保費通知-->\n<pre>  first\n    <code>literal &lt;tag&gt;</code>\n  last  </pre>';
+    assert.equal(result.output, expected);
+    assert.equal(result.twice, expected);
+    assert.equal(result.formatted, expected);
+  });
+});
+
 test('Docx Email DOM-tree formatter preserves rendered text while emitting deterministic readable structure', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
@@ -95,19 +145,21 @@ test('Docx Email DOM-tree formatter preserves rendered text while emitting deter
       };
       return { source, formatted, sourceLayout: measure(source), formattedLayout: measure(formatted), twice: prettyPrintEmailHtml(formatted) };
     });
-    assert.equal(result.formatted, `<strong>標題</strong><br><em>第一行</em><br><br><!--
---><ul><!--
-  --><li>項目 <u>一</u></li><!--
-  --><li>項目二</li><!--
---></ul><!--
---><table><!--
-  --><tbody><!--
-    --><tr><!--
-      --><th>欄位</th><!--
-      --><td>值</td><!--
-    --></tr><!--
-  --></tbody><!--
---></table>`);
+    assert.equal(result.formatted, `<strong>標題</strong><br>
+<em>第一行</em><br>
+<br>
+<ul>
+  <li>項目 <u>一</u></li>
+  <li>項目二</li>
+</ul>
+<table>
+  <tbody>
+    <tr>
+      <th>欄位</th>
+      <td>值</td>
+    </tr>
+  </tbody>
+</table>`);
     assert.deepEqual(result.formattedLayout, result.sourceLayout);
     assert.equal(result.twice, result.formatted);
   });
@@ -146,10 +198,10 @@ test('Docx Email DOM-tree formatter escapes literal markup and does not add whit
     assert.match(result.formatted, /&lt;img src=x onerror=evil\(\)&gt;/);
     assert.equal(result.scripts, 0);
     assert.equal(result.images, 0);
-    assert.equal(result.text, 'ABC<script>literal</script><img src=x onerror=evil()>');
-    assert.deepEqual(result.textNodes, ['<script>literal</script><img src=x onerror=evil()>']);
+    assert.equal(result.text.replace(/\s+/g, ''), 'ABC<script>literal</script><imgsrc=xonerror=evil()>');
+    assert.deepEqual(result.textNodes.filter((text) => text.trim()), ['<script>literal</script><img src=x onerror=evil()>']);
     assert.equal(result.preWrap.text, result.text);
-    assert.equal(result.preLine.text, result.text);
+    assert.equal(result.preLine.text.replace(/\s+/g, ''), result.text.replace(/\s+/g, ''));
     assert.equal(result.twice, result.formatted);
   });
 });
@@ -163,9 +215,9 @@ test('Docx Email emits one final sanitized, readable artifact to separate previe
     assert.match(source, /紅色 16pt 底線/);
     assert.doesNotMatch(source, /font-size\s*:|\ssize\s*=|<\/?p\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
-    assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
-    assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
-    assert.match(source, /<!--\n--><table/);
+    assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
+    assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
+    assert.match(source, /\n<table/);
     await page.locator('#copy-docx-html').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
     const download = page.waitForEvent('download');

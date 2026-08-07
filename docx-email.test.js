@@ -38,7 +38,7 @@ test('converts the line-first DOCX fixture with one break per non-final source t
   const file = new File([content], 'line-first-email.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const { html } = await convertDocx(file);
 
-  assert.match(html, /<strong>第一行粗體<\/strong><br>第二行手動換行<br><font color="#ff0000">第三行紅色<\/font><br><a href="mailto:linked@example\.com"[^>]*>linked@example\.com<\/a><br><a href="mailto:plain@example\.com"[^>]*>plain@example\.com<\/a><br>\n<ul>\n  <li>清單一<\/li>\n  <li>清單二<\/li>\n<\/ul>\n<table/);
+  assert.match(html, /<strong>第一行粗體<\/strong><br>\n第二行手動換行<br>\n<font color="#ff0000">第三行紅色<\/font><br>\n<a href="mailto:linked@example\.com"[^>]*>linked@example\.com<\/a><br>\n<a href="mailto:plain@example\.com"[^>]*>plain@example\.com<\/a><br>\n<ul>\n  <li>清單一<\/li>\n  <li>清單二<\/li>\n<\/ul>\n<table/);
   assert.match(html, /<td[^>]*>表格最後一行<\/td>/);
   assert.doesNotMatch(html, /表格最後一行<br>/);
   assert.equal((html.match(/<br>/g) || []).length, 5);
@@ -55,6 +55,20 @@ test('uses structural list and table boundaries instead of terminal container br
   assert.match(html, /^body line<br><ul><li>list one<\/li><li>nested list item<\/li><li>list two<\/li><\/ul><table/);
   assert.match(html, /<td>cell-1A<br>cell-1B<\/td>/);
   assert.doesNotMatch(html, /<li>[^<]*<br><\/li>|cell-1B<br><\/td>/);
+});
+
+test('fallback sanitizer matches the canonical paragraph, list, table, and cell contract', () => {
+  const savedDomParser = globalThis.DOMParser;
+  const input = '<p style="color:#123456;text-align:center">第一段</p><p>第二段 <a title="連結" href="https://example.com">link</a></p><ul><li>項目一</li><li>項目二</li></ul><table style="width:80%;border-collapse:separate"><tbody><tr><th colspan="2">標題</th><td rowspan="2" style="padding:2px">值</td></tr></tbody></table>';
+  const expected = '第一段<br>\n<br>\n第二段 <a title="連結" href="https://example.com" target="_blank" rel="noopener noreferrer">link</a><br>\n<br>\n<ul>\n  <li>項目一</li>\n  <li>項目二</li>\n</ul>\n<table style="border-collapse:collapse;width:100%">\n  <tbody>\n    <tr>\n      <th colspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">標題</th>\n      <td rowspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">值</td>\n    </tr>\n  </tbody>\n</table>';
+  try {
+    globalThis.DOMParser = undefined;
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, expected);
+    assert.equal(sanitizeEmailHtml(first), expected);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
 });
 
 test('fallback sanitizer removes active child markup inside canonical fonts when DOMParser is unavailable', () => {
@@ -121,13 +135,17 @@ test('formats sanitized HTML deterministically without changing text-node whites
   assert.equal(sanitizeEmailHtml(first), first);
 });
 
-test('formats the sanitized artifact through a DOM tree in source order without creating rendered whitespace', () => {
-  const source = '<strong>標題</strong><br><em>第一行</em><br><br><ul><li>項目 <u>一</u></li><li>項目二</li></ul><table><tbody><tr><th>欄位</th><td>值</td></tr></tbody></table>';
+test('serializes structural breaks, blocks, lists, and meaningful comments as real indented source lines', () => {
+  const source = '<strong>標題</strong><br><em>第一行</em><br><br><!-- 法務：保留此註記 --><ul><li>項目 <u>一</u><br>續行 {{name}}</li><li>項目二</li></ul><table><tbody><tr><th>欄位</th><td>值</td></tr></tbody></table>';
   const formatted = prettyPrintEmailHtml(source);
 
-  assert.equal(formatted, `<strong>標題</strong><br><em>第一行</em><br><br>
+  assert.equal(formatted, `<strong>標題</strong><br>
+<em>第一行</em><br>
+<br>
+<!-- 法務：保留此註記 -->
 <ul>
-  <li>項目 <u>一</u></li>
+  <li>項目 <u>一</u><br>
+  續行 {{name}}</li>
   <li>項目二</li>
 </ul>
 <table>
@@ -138,7 +156,19 @@ test('formats the sanitized artifact through a DOM tree in source order without 
     </tr>
   </tbody>
 </table>`);
+  assert.match(formatted, /<br>\n/);
+  assert.match(formatted, /\n  <li>/);
   assert.equal(prettyPrintEmailHtml(formatted), formatted);
+});
+
+test('drops only contentless conversion comments while preserving business comments and review content', () => {
+  const source = '<!--\n  --><!-- --><!--法務核准：{{name}} 的保費通知--><strong>繁體中文</strong><br>續期通知';
+  const formatted = prettyPrintEmailHtml(source);
+
+  assert.equal(formatted, '<!--法務核准：{{name}} 的保費通知-->\n<strong>繁體中文</strong><br>\n續期通知');
+  assert.doesNotMatch(formatted, /<!--\s*-->/);
+  assert.equal(prettyPrintEmailHtml(formatted), formatted);
+  assert.equal(sanitizeEmailHtml(formatted), formatted);
 });
 
 test('pretty printer preserves preformatted content byte-for-byte for future allowlist support', () => {
@@ -178,10 +208,10 @@ test('renders the source-runs DOCX fixture directly with canonical safe colour f
   const file = new File([content], 'source-runs-email.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const { html, warnings } = await convertDocx(file);
   assert.equal(warnings.length, 0);
-  assert.match(html, /normal&emsp;manual<br>break<br>carriage<br><strong>bold<\/strong><u>underline<\/u><font color="#a1b2c3">colour<\/font>black<font color="#ff0000"><u><strong>combined<\/strong><\/u><\/font><br>/);
-  assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;&lt;img src=x onerror=bad\(\)&gt;<a href="mailto:safe@example\.com"[^>]*>safe@example\.com<\/a>unsafe link<br>/);
+  assert.match(html, /normal&emsp;manual<br>\nbreak<br>\ncarriage<br>\n<strong>bold<\/strong><u>underline<\/u><font color="#a1b2c3">colour<\/font>black<font color="#ff0000"><u><strong>combined<\/strong><\/u><\/font><br>/);
+  assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;&lt;img src=x onerror=bad\(\)&gt;<a href="mailto:safe@example\.com"[^>]*>safe@example\.com<\/a>unsafe link<br>\n/);
   assert.match(html, /<ul>\n  <li>list item<\/li>\n<\/ul>\n<table/);
-  assert.match(html, /<td[^>]*>cell first<br>cell final<\/td>/);
+  assert.match(html, /<td[^>]*>cell first<br>\n      cell final<\/td>/);
   assert.doesNotMatch(html, /(?:<script|<img|javascript:|font-size|\ssize=)/i);
   assert.match(html, /&lt;img src=x onerror=bad\(\)&gt;/);
   assert.doesNotMatch(html, /cell final<br><\/td>|<li>[^<]*<br><\/li>/);
