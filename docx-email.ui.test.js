@@ -328,14 +328,14 @@ test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over
   });
 });
 
-test('Docx Email opens the mutable UTF-8 artifact in a new popup whose shell and sandboxed content have no opener access', async () => {
+test('Docx Email opens the mutable UTF-8 artifact in a neutral popup with a bare sandboxed frame', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
     assert.equal(await page.locator('#docx-preview').count(), 0);
     assert.equal(await page.locator('.preview-side').count(), 0);
     assert.equal(await page.locator('#open-docx-preview').isDisabled(), true);
     await uploadFixture(page);
-    const current = '<h1>繁體中文預覽</h1><p>保單：${policyNo}</p><script>window.top.__docxPreviewAttack = true; if (window.opener) window.opener.__docxPreviewAttack = true;</script>';
+    const current = '<h1>繁體中文預覽</h1><p>保單：${policyNo}</p>';
     await page.locator('#docx-source').fill(current);
     const popupEvent = page.waitForEvent('popup');
     await page.locator('#open-docx-preview').click();
@@ -343,12 +343,40 @@ test('Docx Email opens the mutable UTF-8 artifact in a new popup whose shell and
     await popup.locator('iframe[data-docx-preview]').waitFor();
     const frame = popup.locator('iframe[data-docx-preview]').contentFrame();
     await frame.locator('h1').waitFor();
+    assert.equal(await popup.locator('iframe[data-docx-preview]').getAttribute('sandbox'), '');
+    assert.equal(await popup.locator('iframe[data-docx-preview]').getAttribute('title'), 'Docx Email 預覽內容');
     assert.equal(await popup.evaluate(() => window.opener), null);
     assert.equal(await frame.locator('body').evaluate(() => window.opener), null);
     assert.equal(await frame.locator('body').evaluate(() => document.characterSet.toLowerCase()), 'utf-8');
     assert.equal(await frame.locator('h1').textContent(), '繁體中文預覽');
-    assert.equal(await page.evaluate(() => window.__docxPreviewAttack), undefined);
+    const isolation = await frame.locator('body').evaluate(() => {
+      const attempt = (target) => { try { return { value: String(target.document) }; } catch (error) { return { name: error.name }; } };
+      return { parent: attempt(parent), top: attempt(top) };
+    });
+    assert.deepEqual(isolation, { parent: { name: 'SecurityError' }, top: { name: 'SecurityError' } });
     assert.match(await page.locator('#docx-status').textContent(), /已在新視窗/);
+    await popup.close();
+  });
+});
+
+test('Docx Email bare preview sandbox blocks untrusted blank-target links and forms from escaping or navigating its parent', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    await uploadFixture(page);
+    await page.locator('#docx-source').fill('<a id="attack-link" href="https://example.invalid/" target="_blank">link</a><form id="attack-form" action="https://example.invalid/" target="_blank"><button>submit</button></form>');
+    const popupEvent = page.waitForEvent('popup');
+    await page.locator('#open-docx-preview').click();
+    const popup = await popupEvent;
+    const frame = popup.locator('iframe[data-docx-preview]').contentFrame();
+    await frame.locator('#attack-link').waitFor();
+    const shellUrl = popup.url();
+    const escaped = [];
+    popup.on('popup', (child) => escaped.push(child));
+    await frame.locator('#attack-link').click();
+    await frame.locator('#attack-form button').click();
+    await page.waitForTimeout(150);
+    assert.equal(popup.url(), shellUrl);
+    assert.equal(escaped.length, 0);
     await popup.close();
   });
 });
@@ -388,12 +416,13 @@ test('Docx Email revokes a preview Blob URL only after its isolated frame loads 
     assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
     assert.equal(await page.locator('#copy-docx-html').isDisabled(), false);
     assert.equal(await page.locator('#download-docx-html').isDisabled(), false);
-    await page.evaluate(() => { window.open = () => ({ document: { write() { throw new Error('write failed'); } } }); });
+    await page.evaluate(() => { window.__failedPopup = { closed: false, close() { this.closed = true; }, document: { write() { throw new Error('write failed'); } } }; window.open = () => window.__failedPopup; });
     await page.locator('#open-docx-preview').click();
     assert.match(await page.locator('#docx-status').textContent(), /無法開啟預覽/);
     assert.match(await page.locator('#docx-error').textContent(), /無法開啟預覽/);
     assert.equal(await page.locator('#docx-source').inputValue(), current);
     assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
+    assert.equal(await page.evaluate(() => window.__failedPopup.closed), true);
   });
 });
 

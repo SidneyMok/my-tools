@@ -37,15 +37,16 @@ preview.addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([artifact], { type: 'text/html;charset=UTF-8' }));
   let revoked = false;
   const revoke = () => { if (!revoked) { revoked = true; URL.revokeObjectURL(url); } };
+  let popup;
   try {
     // Open a trusted neutral shell under the click activation, then isolate the editable
     // HTML in an opaque-origin frame. Never give editor HTML a same-origin popup or opener.
-    const popup = window.open('', '_blank');
+    popup = window.open('', '_blank');
     if (!popup) throw new Error('blocked');
     popup.opener = null;
     if (typeof popup.document?.write !== 'function') throw new Error('unavailable');
     popup.document.open?.();
-    popup.document.write('<!doctype html><meta charset="UTF-8"><title>Docx Email 預覽</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0}iframe{display:block}</style><iframe data-docx-preview sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>');
+    popup.document.write('<!doctype html><meta charset="UTF-8"><title>Docx Email 預覽</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0}iframe{display:block}</style><iframe data-docx-preview title="Docx Email 預覽內容" sandbox=""></iframe>');
     popup.document.close?.();
     const frame = popup.document.querySelector?.('iframe[data-docx-preview]');
     if (!frame) throw new Error('unavailable');
@@ -55,6 +56,7 @@ preview.addEventListener('click', () => {
     status.textContent = '已在新視窗開啟預覽';
   } catch {
     revoke();
+    popup?.close?.();
     error.textContent = '無法開啟預覽視窗，請允許彈出視窗後再試。';
     status.textContent = '無法開啟預覽';
   }
