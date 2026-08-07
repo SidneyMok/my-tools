@@ -72,6 +72,21 @@ test('Docx Email browser DOMParser sanitizer strips target styles and is byte-id
   });
 });
 
+test('Docx Email browser sanitizer matches the Node fallback contract for paragraphs, lists, tables, and cells', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const input = '<p style="color:#123456;text-align:center">第一段</p><p>第二段 <a title="連結" href="https://example.com">link</a></p><ul><li>項目一</li><li>項目二</li></ul><table style="width:80%;border-collapse:separate"><tbody><tr><th colspan="2">標題</th><td rowspan="2" style="padding:2px">值</td></tr></tbody></table>';
+    const browser = await page.evaluate(async (source) => {
+      const { sanitizeEmailHtml } = await import('./docx-email.js');
+      const first = sanitizeEmailHtml(source);
+      return { first, second: sanitizeEmailHtml(first) };
+    }, input);
+    const expected = '第一段<br>\n<br>\n第二段 <a title="連結" href="https://example.com" target="_blank" rel="noopener noreferrer">link</a><br>\n<br>\n<ul>\n  <li>項目一</li>\n  <li>項目二</li>\n</ul>\n<table style="border-collapse:collapse;width:100%">\n  <tbody>\n    <tr>\n      <th colspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">標題</th>\n      <td rowspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">值</td>\n    </tr>\n  </tbody>\n</table>';
+    assert.equal(browser.first, expected);
+    assert.equal(browser.second, expected);
+  });
+});
+
 test('Docx Email browser DOMParser formatter preserves preformatted blank lines and indentation while stripping active scripts', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);

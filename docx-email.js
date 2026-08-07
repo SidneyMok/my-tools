@@ -51,6 +51,37 @@ function htmlTokens(html) {
   return tokens;
 }
 
+// This operates on the sanitizer's conservative token stream, rather than a string-wide
+// replacement: paragraphs are unwrapped and receive their mail-compatible separators only
+// when they have a following element sibling at the same structural level.
+function unwrapFallbackParagraphs(html) {
+  const voidNames = new Set(['br', 'img']);
+  const tokens = htmlTokens(html)
+    .filter((token) => !(token.type === 'close' && voidNames.has(token.name)))
+    .map((token) => token.type === 'open' && voidNames.has(token.name) ? { ...token, type: 'void' } : token);
+  const renderChildren = (start, stopAtClose = false) => {
+    const children = [];
+    let index = start;
+    while (index < tokens.length) {
+      const token = tokens[index];
+      if (stopAtClose && token.type === 'close') return { output: children, index: index + 1 };
+      if (token.type === 'close') { children.push({ token, output: token.value }); index += 1; continue; }
+      if (token.type === 'open' && !voidNames.has(token.name)) {
+        const nested = renderChildren(index + 1, true);
+        children.push({ token, output: serialize(nested.output) });
+        index = nested.index;
+      } else { children.push({ token, output: token.value }); index += 1; }
+    }
+    return { output: children, index };
+  };
+  const serialize = (children) => children.map((child, index) => {
+    if (child.token.type !== 'open' || child.token.name !== 'p') return child.token.type === 'open' ? `${child.token.value}${child.output}</${child.token.name}>` : child.output;
+    const hasFollowingElement = children.slice(index + 1).some((sibling) => sibling.token.type === 'open' || sibling.token.type === 'void');
+    return `${child.output}${hasFollowingElement ? '<br><br>' : ''}`;
+  }).join('');
+  return serialize(renderChildren(0).output);
+}
+
 function prettyPrintEmailHtmlFallback(html) {
   const output = []; const stack = []; let depth = 0; let boundary = null;
   const write = (value) => { output.push(value); boundary = null; };
@@ -200,19 +231,31 @@ export function sanitizeEmailHtml(dirty) {
         fontStack.push(accepted);
         return accepted ? `<font color="${color}">` : '';
       }
-      if (!allowed.has(name) || /^(?:script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(name) || name === 'p' || name === 'span') return '';
+      if (!allowed.has(name) || /^(?:script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(name) || name === 'span') return '';
       if (closing) return name === 'br' || name === 'img' ? '' : `</${name}>`;
       const attributes = parseAttributes(source);
       const output = [];
-      const style = sanitizeStyle(attributes.get('style') || ''); if (style) output.push(`style="${style}"`);
-      for (const attribute of ['alt', 'title', 'colspan', 'rowspan']) if (attributes.has(attribute)) output.push(`${attribute}="${escapeAttribute(attributes.get(attribute))}"`);
-      if ((name === 'a' || name === 'img') && safeUrl(attributes.get(name === 'a' ? 'href' : 'src'))) output.push(`${name === 'a' ? 'href' : 'src'}="${escapeAttribute(attributes.get(name === 'a' ? 'href' : 'src'))}"`);
+      const styleFor = () => {
+        const sanitized = sanitizeStyle(attributes.get('style') || '');
+        const declarations = sanitized ? sanitized.split(';') : [];
+        if (name === 'table') return [...declarations.filter((declaration) => !/^(?:border-collapse|width):/i.test(declaration)), 'border-collapse:collapse', 'width:100%'].join(';');
+        if (name === 'td' || name === 'th') return [...declarations.filter((declaration) => !/^(?:border|padding|vertical-align):/i.test(declaration)), 'border:1px solid #dce4df', 'padding:8px', 'vertical-align:top'].join(';');
+        return sanitized;
+      };
+      const canonicalStyle = styleFor();
+      for (const [attribute, value] of attributes) {
+        if (attribute === 'style' && canonicalStyle) output.push(`style="${canonicalStyle}"`);
+        else if (['alt', 'title', 'colspan', 'rowspan'].includes(attribute)) output.push(`${attribute}="${escapeAttribute(value)}"`);
+        else if ((attribute === 'href' || attribute === 'src') && ((name === 'a' && attribute === 'href') || (name === 'img' && attribute === 'src')) && safeUrl(value)) output.push(`${attribute}="${escapeAttribute(value)}"`);
+      }
+      if (!attributes.has('style') && canonicalStyle) output.push(`style="${canonicalStyle}"`);
       if (name === 'a' && attributes.has('href') && safeUrl(attributes.get('href'))) output.push('target="_blank"', 'rel="noopener noreferrer"');
       return `<${name}${output.length ? ` ${output.join(' ')}` : ''}>`;
     };
     const protectComments = (input) => input.replace(/<!--([\s\S]*?)-->/g, (_match, content) => (content.trim() ? `@@COMMENT${comments.push(content) - 1}@@` : ''));
     const cleaned = protect(protectComments(dirty)).replace(/<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, sanitizeTag);
-    return prettyPrintEmailHtml(cleaned.replace(/@@ESCAPED(\d+)@@/g, (_match, index) => escaped[index]).replace(/@@COMMENT(\d+)@@/g, (_match, index) => `<!--${comments[index]}-->`));
+    const restored = cleaned.replace(/@@ESCAPED(\d+)@@/g, (_match, index) => escaped[index]).replace(/@@COMMENT(\d+)@@/g, (_match, index) => `<!--${comments[index]}-->`);
+    return prettyPrintEmailHtml(unwrapFallbackParagraphs(restored));
   }
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
   const leadingComments = meaningfulDocumentComments(doc).join('');

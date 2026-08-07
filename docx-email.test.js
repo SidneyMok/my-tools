@@ -57,6 +57,20 @@ test('uses structural list and table boundaries instead of terminal container br
   assert.doesNotMatch(html, /<li>[^<]*<br><\/li>|cell-1B<br><\/td>/);
 });
 
+test('fallback sanitizer matches the canonical paragraph, list, table, and cell contract', () => {
+  const savedDomParser = globalThis.DOMParser;
+  const input = '<p style="color:#123456;text-align:center">第一段</p><p>第二段 <a title="連結" href="https://example.com">link</a></p><ul><li>項目一</li><li>項目二</li></ul><table style="width:80%;border-collapse:separate"><tbody><tr><th colspan="2">標題</th><td rowspan="2" style="padding:2px">值</td></tr></tbody></table>';
+  const expected = '第一段<br>\n<br>\n第二段 <a title="連結" href="https://example.com" target="_blank" rel="noopener noreferrer">link</a><br>\n<br>\n<ul>\n  <li>項目一</li>\n  <li>項目二</li>\n</ul>\n<table style="border-collapse:collapse;width:100%">\n  <tbody>\n    <tr>\n      <th colspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">標題</th>\n      <td rowspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">值</td>\n    </tr>\n  </tbody>\n</table>';
+  try {
+    globalThis.DOMParser = undefined;
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, expected);
+    assert.equal(sanitizeEmailHtml(first), expected);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
+});
+
 test('fallback sanitizer removes active child markup inside canonical fonts when DOMParser is unavailable', () => {
   const savedDomParser = globalThis.DOMParser;
   try {
