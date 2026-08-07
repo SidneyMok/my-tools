@@ -152,10 +152,10 @@ test('Docx Email DOM-tree formatter escapes literal markup and does not add whit
   });
 });
 
-test('Docx Email emits one final sanitized, readable artifact to preview, clipboard, and UTF-8 download without iframe scripts', async () => {
+test('Docx Email emits one final sanitized, readable artifact to separate preview, clipboard, and UTF-8 download', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
-    assert.equal(await page.locator('#docx-preview').getAttribute('sandbox'), '');
+    assert.equal(await page.locator('#docx-preview').count(), 0);
     await uploadFixture(page);
     const source = await page.locator('#docx-source').inputValue();
     assert.match(source, /紅色 16pt 底線/);
@@ -164,9 +164,6 @@ test('Docx Email emits one final sanitized, readable artifact to preview, clipbo
     assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
     assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
     assert.match(source, /<!--\n--><table/);
-    assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
-    assert.equal(await page.locator('#docx-preview').contentFrame().locator('ul > li').count(), 2);
-    assert.equal(await page.locator('#docx-preview').contentFrame().locator('ol > li').count(), 2);
     await page.locator('#copy-docx-html').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
     const download = page.waitForEvent('download');
@@ -192,7 +189,7 @@ test('Docx Email shows only the exact ordered common-variable catalog and search
     assert.deepEqual(await page.locator('[data-variable-kind="builtin"]').evaluateAll((buttons) => buttons.map((button) => button.dataset.variableField)), ['coolingOffDateEn']);
     await page.locator('#docx-source').selectText(); await page.locator('[data-variable-field="coolingOffDateEn"]').click();
     assert.equal(await page.locator('#docx-source').inputValue(), '${coolingOffDateEn}');
-    assert.equal(await page.locator('#docx-preview').evaluate((frame) => frame.srcdoc), '${coolingOffDateEn}');
+    assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
   });
 });
 
@@ -225,52 +222,45 @@ test('Docx Email initial workspace has no reserved empty feedback space and rema
   });
 });
 
-test('Docx Email does not report conversion complete before a delayed mobile preview has loaded', async () => {
+test('Docx Email reports conversion complete without waiting for a removed in-page iframe preview', async () => {
   await withPage(async ({ page, url }) => {
-    await page.addInitScript(() => {
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'srcdoc');
-      Object.defineProperty(HTMLIFrameElement.prototype, 'srcdoc', {
-        configurable: true,
-        get() { return descriptor.get.call(this); },
-        set(value) { setTimeout(() => descriptor.set.call(this, value), 100); }
-      });
-    });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(url);
     await page.locator('#docx-input').setInputFiles(path.join(root, 'fixtures/line-first-email.docx'));
-    await page.waitForTimeout(30);
-    assert.equal(await page.locator('#docx-status').textContent(), '正在轉換…');
     await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
-    const frame = page.locator('#docx-preview').contentFrame();
-    assert.match(await frame.locator('body').innerText(), /第一行粗體/);
+    assert.match(await page.locator('#docx-source').inputValue(), /第一行粗體/);
+    assert.equal(await page.locator('#docx-preview').count(), 0);
   });
 });
 
-test('Docx Email insurance-notice preview has enough mobile height for its full sanitized content', async () => {
+test('Docx Email has no embedded preview geometry on mobile', async () => {
   await withPage(async ({ page, url }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(url);
-    await page.locator('#docx-input').setInputFiles(path.join(root, 'fixtures/insurance-notice-font-sizing.docx'));
-    await page.locator('#docx-status').filter({ hasText: '已轉換' }).waitFor();
-    const preview = page.locator('#docx-preview');
-    const frame = preview.contentFrame();
-    assert.ok(await frame.locator('table').count());
-    assert.equal(await preview.evaluate((iframe) => iframe.clientHeight), await frame.locator('html').evaluate((html) => html.scrollHeight));
+    const geometry = await page.evaluate(() => {
+      const workspace = document.querySelector('.docx-workspace').getBoundingClientRect();
+      const source = document.querySelector('#docx-source').getBoundingClientRect();
+      return { workspaceHeight: workspace.height, sourceHeight: source.height, scrollWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+    });
+    assert.ok(Math.abs(geometry.workspaceHeight - (geometry.sourceHeight + 35)) <= 1, JSON.stringify(geometry));
+    assert.equal(geometry.scrollWidth, geometry.viewportWidth);
   });
 });
 
-test('Docx Email keeps the source editor and mail preview at the same workspace height on desktop', async () => {
+test('Docx Email source workspace is a single full-width column without preview reservation on desktop', async () => {
   await withPage(async ({ page, url }) => {
-    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(url);
-    await uploadFixture(page);
     const geometry = await page.evaluate(() => {
-      const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
-      const source = rect('#docx-source');
-      const preview = rect('#docx-preview');
-      return { sourceHeight: source.height, previewHeight: preview.height };
+      const workspace = document.querySelector('.docx-workspace').getBoundingClientRect();
+      const code = document.querySelector('.docx-workspace .code-side').getBoundingClientRect();
+      const source = document.querySelector('#docx-source').getBoundingClientRect();
+      return { workspaceWidth: workspace.width, codeWidth: code.width, sourceWidth: source.width, columns: getComputedStyle(document.querySelector('.docx-workspace')).gridTemplateColumns, preview: document.querySelector('.preview-side') };
     });
-    assert.equal(geometry.sourceHeight, geometry.previewHeight);
+    assert.equal(geometry.preview, null);
+    assert.equal(geometry.columns, `${geometry.workspaceWidth - 2}px`);
+    assert.equal(geometry.codeWidth, geometry.workspaceWidth - 2);
+    assert.equal(geometry.sourceWidth, geometry.codeWidth);
   });
 });
 
@@ -283,7 +273,7 @@ test('Docx Email inserts literal variables over selection and keeps edited artif
     const source = await page.locator('#docx-source').inputValue();
     assert.equal(source, 'before ${policyNo} after');
     assert.deepEqual(await page.locator('#docx-source').evaluate((textarea) => ({ focused: document.activeElement === textarea, start: textarea.selectionStart, end: textarea.selectionEnd })), { focused: true, start: 18, end: 18 });
-    assert.equal(await page.locator('#docx-preview').evaluate((iframe) => iframe.srcdoc), source);
+    assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
     await page.locator('#copy-docx-html').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
     const download = page.waitForEvent('download'); await page.locator('#download-docx-html').click();
@@ -338,6 +328,64 @@ test('docx email gives explicit invalid-extension, corrupt/missing-XML, and over
   });
 });
 
+test('Docx Email previews the exact mutable Traditional Chinese artifact through a UTF-8 blob and recovers from blocked popups', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.addInitScript(() => {
+      window.__previewCalls = [];
+      window.__objectUrls = new Map();
+      URL.createObjectURL = (blob) => { const url = `blob:preview-${window.__objectUrls.size}`; window.__objectUrls.set(url, blob); return url; };
+      URL.revokeObjectURL = (url) => window.__objectUrls.delete(url);
+      window.open = (...args) => { window.__previewCalls.push(args); return { addEventListener() {} }; };
+    });
+    await page.goto(url);
+    assert.equal(await page.locator('#docx-preview').count(), 0);
+    assert.equal(await page.locator('.preview-side').count(), 0);
+    assert.equal(await page.locator('#open-docx-preview').isDisabled(), true);
+    await uploadFixture(page);
+    const current = '<h1>繁體中文預覽</h1><p>保單：${policyNo}</p>';
+    await page.locator('#docx-source').fill(current);
+    await page.locator('#open-docx-preview').click();
+    const preview = await page.evaluate(async () => {
+      const args = window.__previewCalls[0]; const blob = window.__objectUrls.get(args[0]);
+      return { args, type: blob.type, text: await blob.text() };
+    });
+    assert.match(preview.args[0], /^blob:preview-/);
+    assert.deepEqual(preview.args.slice(1), ['_blank']);
+    assert.equal(preview.type, 'text/html;charset=utf-8');
+    assert.equal(preview.text, current);
+    assert.match(await page.locator('#docx-status').textContent(), /已在新視窗/);
+    await page.evaluate(() => { window.open = () => null; });
+    await page.locator('#open-docx-preview').click();
+    assert.match(await page.locator('#docx-status').textContent(), /無法開啟預覽/);
+    assert.match(await page.locator('#docx-error').textContent(), /無法開啟預覽/);
+    assert.equal(await page.locator('#docx-source').inputValue(), current);
+    assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
+    assert.equal(await page.locator('#copy-docx-html').isDisabled(), false);
+    assert.equal(await page.locator('#download-docx-html').isDisabled(), false);
+    await page.evaluate(() => { window.open = () => ({ document: { write() { throw new Error('write failed'); } } }); });
+    await page.locator('#open-docx-preview').click();
+    assert.match(await page.locator('#docx-status').textContent(), /無法開啟預覽/);
+    assert.match(await page.locator('#docx-error').textContent(), /無法開啟預覽/);
+    assert.equal(await page.locator('#docx-source').inputValue(), current);
+    assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
+  });
+});
+
+test('Docx Email gates preview, copy, and download after initial, failed, and cleared conversion states', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const controls = '#open-docx-preview, #copy-docx-html, #download-docx-html';
+    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true]);
+    await page.locator('#docx-input').setInputFiles({ name: 'legacy.doc', mimeType: 'application/msword', buffer: Buffer.from('old') });
+    await page.locator('#docx-status').filter({ hasText: '無法轉換' }).waitFor();
+    assert.equal(await page.locator('#docx-source').inputValue(), '');
+    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true]);
+    await uploadFixture(page);
+    await page.locator('#docx-source').fill('');
+    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true]);
+  });
+});
+
 test('all user-visible Docx Email labels use the exact product name and the page omits nonessential instructions', async () => {
   for (const filename of pages) {
     const html = await readFile(path.join(root, filename), 'utf8');
@@ -347,7 +395,6 @@ test('all user-visible Docx Email labels use the exact product name and the page
   const docxPage = await readFile(path.join(root, 'docx-email.html'), 'utf8');
   assert.match(docxPage, /<title>Docx Email<\/title>/);
   assert.match(docxPage, /<h1 id="docx-title">Docx Email<\/h1>/);
-  assert.match(docxPage, /title="Docx Email"/);
   assert.doesNotMatch(docxPage, /完全在此裝置轉換|僅限 \.docx|Mammoth 僅協助|圖片可在本機預覽|唯一輸出|隔離 iframe/);
   assert.match(docxPage, /src="vendor\/jszip-3\.10\.1\.min\.js"/);
   assert.match(docxPage, /src="vendor\/mammoth-1\.11\.0\.browser\.js"/);
