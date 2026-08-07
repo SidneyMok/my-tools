@@ -72,6 +72,25 @@ test('Docx Email browser DOMParser sanitizer strips target styles and is byte-id
   });
 });
 
+test('Docx Email browser DOMParser formatter preserves preformatted blank lines and indentation while stripping active scripts', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
+      const input = '<pre>first\n\n  second\n\n\nthird</pre><br>after';
+      const expected = '<pre>first\n\n  second\n\n\nthird</pre><br>\nafter';
+      const formatted = prettyPrintEmailHtml(input);
+      const sanitized = sanitizeEmailHtml(`${input}<script>window.__docxEmailPwned = true</script>`);
+      return { expected, formatted, formattedTwice: prettyPrintEmailHtml(formatted), sanitized, sanitizedTwice: sanitizeEmailHtml(sanitized), scriptRan: window.__docxEmailPwned === true };
+    });
+    assert.equal(result.formatted, result.expected);
+    assert.equal(result.formattedTwice, result.expected);
+    assert.equal(result.sanitized, result.expected);
+    assert.equal(result.sanitizedTwice, result.expected);
+    assert.equal(result.scriptRan, false);
+  });
+});
+
 test('Docx Email browser sanitizer preserves legal top-level comments and preformatted literal content', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);

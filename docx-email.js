@@ -58,6 +58,7 @@ function prettyPrintEmailHtmlFallback(html) {
     if (!output.length) return;
     const value = `\n${'  '.repeat(indent)}`;
     if (boundary != null) output[boundary] = value;
+    else if (/\n[ \t]*$/.test(output[output.length - 1])) output[output.length - 1] = output[output.length - 1].replace(/\n[ \t]*$/, value);
     else { output.push(value); boundary = output.length - 1; }
   };
   for (const token of htmlTokens(html)) {
@@ -79,7 +80,7 @@ function prettyPrintEmailHtmlFallback(html) {
     if (structural) line(depth);
     write(token.value); if (token.type === 'open') stack.push(token.name); if (structural) depth += 1; if (token.name === 'br') line(Math.max(0, depth - 1));
   }
-  return output.join('').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n');
+  return output.join('');
 }
 
 function escapeAttribute(value) {
@@ -138,6 +139,7 @@ export function prettyPrintEmailHtml(html) {
     if (!hasOutput || depth == null) return;
     const value = `\n${'  '.repeat(depth)}`;
     if (boundary != null) output[boundary] = value;
+    else if (/\n[ \t]*$/.test(output[output.length - 1])) output[output.length - 1] = output[output.length - 1].replace(/\n[ \t]*$/, value);
     else { output.push(value); boundary = output.length - 1; }
   };
 
@@ -157,7 +159,7 @@ export function prettyPrintEmailHtml(html) {
       serializeReadableElement(node, 0, writeLine, write);
     }
   }
-  return output.join('').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n');
+  return output.join('');
 }
 
 const children = (node, name) => Array.from(node?.childNodes || []).filter((child) => child.nodeType === 1 && child.localName === name);
