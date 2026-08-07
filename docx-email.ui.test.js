@@ -381,18 +381,26 @@ test('Docx Email bare preview sandbox blocks untrusted blank-target links and fo
   });
 });
 
-test('Docx Email revokes a preview Blob URL only after its isolated frame loads and recovers from popup failures', async () => {
+test('Docx Email revokes a preview Blob URL after isolated-frame load or an early popup close and recovers from popup failures', async () => {
   await withPage(async ({ page, url }) => {
     await page.addInitScript(() => {
       window.__previewRevocations = [];
       window.__previewLoad = null;
+      window.__previewClose = null;
+      window.__previewListenerRemovals = [];
       URL.createObjectURL = () => 'blob:preview-test';
       URL.revokeObjectURL = (value) => window.__previewRevocations.push(value);
       window.open = () => ({
         opener: window,
+        addEventListener(type, listener) { if (type === 'pagehide') window.__previewClose = listener; },
+        removeEventListener(type, listener) { window.__previewListenerRemovals.push(type); },
         document: {
           open() {}, write() {}, close() {},
-          querySelector() { return { addEventListener(type, listener) { if (type === 'load') window.__previewLoad = listener; }, set src(value) { window.__previewUrl = value; } }; }
+          querySelector() { return {
+            addEventListener(type, listener) { if (type === 'load') window.__previewLoad = listener; },
+            removeEventListener(type, listener) { window.__previewListenerRemovals.push(`frame:${type}`); },
+            set src(value) { window.__previewUrl = value; }
+          }; }
         }
       });
     });
@@ -406,6 +414,20 @@ test('Docx Email revokes a preview Blob URL only after its isolated frame loads 
     assert.deepEqual(await page.evaluate(() => window.__previewRevocations), []);
     await page.evaluate(() => window.__previewLoad());
     assert.deepEqual(await page.evaluate(() => window.__previewRevocations), ['blob:preview-test']);
+    assert.deepEqual(await page.evaluate(() => window.__previewListenerRemovals.sort()), ['frame:load', 'pagehide']);
+    await page.evaluate(() => window.__previewLoad());
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), ['blob:preview-test']);
+    await page.evaluate(() => {
+      window.__previewRevocations = [];
+      window.__previewListenerRemovals = [];
+      window.__previewLoad = null;
+      window.__previewClose = null;
+    });
+    await page.locator('#open-docx-preview').click();
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), []);
+    await page.evaluate(() => window.__previewClose());
+    assert.deepEqual(await page.evaluate(() => window.__previewRevocations), ['blob:preview-test']);
+    assert.deepEqual(await page.evaluate(() => window.__previewListenerRemovals.sort()), ['frame:load', 'pagehide']);
     await page.evaluate(() => window.__previewLoad());
     assert.deepEqual(await page.evaluate(() => window.__previewRevocations), ['blob:preview-test']);
     await page.evaluate(() => { window.open = () => null; });

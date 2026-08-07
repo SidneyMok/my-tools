@@ -36,19 +36,26 @@ preview.addEventListener('click', () => {
   if (!artifact) return;
   const url = URL.createObjectURL(new Blob([artifact], { type: 'text/html;charset=UTF-8' }));
   let revoked = false;
-  const revoke = () => { if (!revoked) { revoked = true; URL.revokeObjectURL(url); } };
-  let popup;
+  let popup; let frame;
+  const cleanup = () => {
+    popup?.removeEventListener?.('pagehide', revoke);
+    frame?.removeEventListener?.('load', revoke);
+  };
+  const revoke = () => { if (!revoked) { revoked = true; cleanup(); URL.revokeObjectURL(url); } };
   try {
     // Open a trusted neutral shell under the click activation, then isolate the editable
     // HTML in an opaque-origin frame. Never give editor HTML a same-origin popup or opener.
     popup = window.open('', '_blank');
     if (!popup) throw new Error('blocked');
     popup.opener = null;
-    if (typeof popup.document?.write !== 'function') throw new Error('unavailable');
+    if (typeof popup.addEventListener !== 'function' || typeof popup.document?.write !== 'function') throw new Error('unavailable');
+    // A popup can be dismissed before its frame receives the Blob URL. pagehide is the
+    // browser lifecycle signal for that case and leaves a successfully loaded frame intact.
+    popup.addEventListener('pagehide', revoke, { once: true });
     popup.document.open?.();
     popup.document.write('<!doctype html><meta charset="UTF-8"><title>Docx Email 預覽</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0}iframe{display:block}</style><iframe data-docx-preview title="Docx Email 預覽內容" sandbox=""></iframe>');
     popup.document.close?.();
-    const frame = popup.document.querySelector?.('iframe[data-docx-preview]');
+    frame = popup.document.querySelector?.('iframe[data-docx-preview]');
     if (!frame) throw new Error('unavailable');
     frame.addEventListener('load', revoke, { once: true });
     frame.src = url;
