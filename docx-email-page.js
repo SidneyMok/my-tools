@@ -30,7 +30,7 @@ cancelCustom.addEventListener('click', resetCustomForm);
 customVariables = loadCustomVariables(); renderCatalog(); renderCustomVariables();
 input.addEventListener('change', async () => {
   const file = input.files?.[0]; if (!file) return; error.textContent = ''; warnings.textContent = ''; status.textContent = '正在轉換…'; useArtifact('');
-  try { const result = await convertDocx(file, globalThis.mammoth); useArtifact(result.html); status.textContent = '已轉換並消毒'; warnings.textContent = result.warnings.join(' '); } catch (reason) { showFailure(reason.message); }
+  try { const result = await convertDocx(file); useArtifact(result.html); status.textContent = '已轉換並消毒'; warnings.textContent = result.warnings.join(' '); } catch (reason) { showFailure(reason.message); }
 });
 preview.addEventListener('click', () => {
   if (!artifact) return;

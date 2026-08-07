@@ -2,7 +2,7 @@ export const MAX_DOCX_BYTES = 10 * 1024 * 1024;
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const safeUrl = (value) => /^(https?:|mailto:)/i.test(value || '');
-const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img']);
+const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'span', 'img', 'font']);
 const allowedStyleProperties = new Set(['color', 'text-align', 'border', 'border-collapse', 'border-spacing', 'padding', 'vertical-align', 'width', 'height']);
 const safeStyleValue = (property, value) => {
   const clean = value.trim();
@@ -158,12 +158,50 @@ export function validateDocxFile(file) {
 export async function assertDocxSignature(file) { const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer()); return bytes.length === 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04; }
 
 export function sanitizeEmailHtml(dirty) {
-  if (typeof DOMParser === 'undefined') return prettyPrintEmailHtml(dirty.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<\/?(?:form|iframe|object|embed|p)\b[^>]*>|<\/?font\b[^>]*>|\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\s(?:href|src)\s*=\s*["']?(?:javascript|data|vbscript):[^\s>"']*|\ssize\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)|\sfont-size\s*:[^;"']*;?/gi, '').replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => { const clean = sanitizeStyle(doubleQuoted ?? singleQuoted ?? ''); return clean ? ` style="${clean}"` : ''; }));
+  if (typeof DOMParser === 'undefined') {
+    const escaped = [];
+    const fontStack = [];
+    const protect = (input) => input.replace(/&lt;[\s\S]*?&gt;/gi, (text) => `@@ESCAPED${escaped.push(text) - 1}@@`);
+    const parseAttributes = (source) => {
+      const attributes = new Map();
+      for (const match of source.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) attributes.set(match[1].toLowerCase(), match[2] ?? match[3] ?? match[4] ?? '');
+      return attributes;
+    };
+    const sanitizeTag = (tag) => {
+      const match = /^<\s*(\/)?\s*([a-z0-9-]+)([^>]*)>$/i.exec(tag);
+      if (!match) return esc(tag);
+      const [, closing, rawName, source] = match; const name = rawName.toLowerCase();
+      if (name === 'font') {
+        if (closing) return fontStack.pop() ? '</font>' : '';
+        const attributes = parseAttributes(source); const color = attributes.get('color')?.toLowerCase();
+        const accepted = attributes.size === 1 && /^#[0-9a-f]{6}$/.test(color || '') && !/^#0{6}$/.test(color);
+        fontStack.push(accepted);
+        return accepted ? `<font color="${color}">` : '';
+      }
+      if (!allowed.has(name) || /^(?:script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(name) || name === 'p' || name === 'span') return '';
+      if (closing) return name === 'br' || name === 'img' ? '' : `</${name}>`;
+      const attributes = parseAttributes(source);
+      const output = [];
+      const style = sanitizeStyle(attributes.get('style') || ''); if (style) output.push(`style="${style}"`);
+      for (const attribute of ['alt', 'title', 'colspan', 'rowspan']) if (attributes.has(attribute)) output.push(`${attribute}="${escapeAttribute(attributes.get(attribute))}"`);
+      if ((name === 'a' || name === 'img') && safeUrl(attributes.get(name === 'a' ? 'href' : 'src'))) output.push(`${name === 'a' ? 'href' : 'src'}="${escapeAttribute(attributes.get(name === 'a' ? 'href' : 'src'))}"`);
+      if (name === 'a' && attributes.has('href') && safeUrl(attributes.get('href'))) output.push('target="_blank"', 'rel="noopener noreferrer"');
+      return `<${name}${output.length ? ` ${output.join(' ')}` : ''}>`;
+    };
+    const cleaned = protect(dirty).replace(/<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, sanitizeTag);
+    return prettyPrintEmailHtml(cleaned.replace(/@@ESCAPED(\d+)@@/g, (_match, index) => escaped[index]));
+  }
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
-  for (const font of [...doc.body.querySelectorAll('font')]) font.replaceWith(...font.childNodes);
   for (const element of [...doc.body.querySelectorAll('*')]) {
     const tag = element.tagName.toLowerCase();
     if (!allowed.has(tag) || /^(script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(tag)) { element.remove(); continue; }
+    if (tag === 'span') { element.replaceWith(...element.childNodes); continue; }
+    if (tag === 'font') {
+      const color = element.getAttribute('color');
+      if (!/^#[0-9a-f]{6}$/i.test(color || '') || /^#0{6}$/i.test(color) || element.attributes.length !== 1) { element.replaceWith(...element.childNodes); continue; }
+      element.setAttribute('color', color.toLowerCase());
+      continue;
+    }
     for (const attribute of [...element.attributes]) {
       const name = attribute.name.toLowerCase();
       if (name === 'style') { const sanitized = sanitizeStyle(attribute.value); if (sanitized) element.setAttribute('style', sanitized); else element.removeAttribute('style'); }
@@ -181,9 +219,7 @@ export function sanitizeEmailHtml(dirty) {
     const existing = (cell.getAttribute('style') || '').split(';').filter((declaration) => declaration && !/^(?:border|padding|vertical-align):/i.test(declaration));
     cell.setAttribute('style', [...existing, 'border:1px solid #dce4df', 'padding:8px', 'vertical-align:top'].join(';'));
   }
-  for (const span of [...doc.body.querySelectorAll('span')]) {
-    if (!span.getAttribute('style')) span.replaceWith(...span.childNodes);
-  }
+  for (const span of [...doc.body.querySelectorAll('span')]) span.replaceWith(...span.childNodes);
   const paragraphs = [...doc.body.querySelectorAll('p')];
   for (const paragraph of paragraphs) {
     const next = paragraph.nextElementSibling;
@@ -193,9 +229,17 @@ export function sanitizeEmailHtml(dirty) {
   return prettyPrintEmailHtml(output);
 }
 
+function mailtoPlainText(text) {
+  const email = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+  let output = ''; let cursor = 0;
+  for (const match of text.matchAll(email)) { output += esc(text.slice(cursor, match.index)); output += `<a href="mailto:${match[0]}">${esc(match[0])}</a>`; cursor = match.index + match[0].length; }
+  return output + esc(text.slice(cursor));
+}
+
+// Formatting nests deterministically from outermost colour, then underline, then bold.
 function runHtml(run, linkify = true) {
   const properties = child(run, 'rPr');
-  const text = [...run.childNodes].map((node) => node.localName === 't' ? esc(node.textContent) : node.localName === 'tab' ? '&emsp;' : node.localName === 'br' || node.localName === 'cr' ? '<br>' : '').join('');
+  const text = [...run.childNodes].map((node) => node.localName === 't' ? (linkify ? mailtoPlainText(node.textContent) : esc(node.textContent)) : node.localName === 'tab' ? '&emsp;' : node.localName === 'br' || node.localName === 'cr' ? '<br>' : '').join('');
   if (!text) return '';
   let output = text;
   if (enabledOoxmlBoolean(child(properties, 'b'))) output = `<strong>${output}</strong>`;
@@ -203,11 +247,8 @@ function runHtml(run, linkify = true) {
   if (child(properties, 'u') && attr(child(properties, 'u'), 'val') !== 'none') output = `<u>${output}</u>`;
   if (child(properties, 'strike') || child(properties, 'dstrike')) output = `<s>${output}</s>`;
   const color = attr(child(properties, 'color'), 'val');
-  if (/^[0-9a-f]{6}$/i.test(color || '') && !/^0{6}$/i.test(color)) output = `<span style="color:#${color.toLowerCase()}">${output}</span>`;
-  return linkify ? mailtoPlainEmail(output) : output;
-}
-function mailtoPlainEmail(html) {
-  return html.replace(/(^|>)([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})(?=<|$)/gi, (_match, prefix, email) => `${prefix}<a href="mailto:${email}">${email}</a>`);
+  if (/^[0-9a-f]{6}$/i.test(color || '') && !/^0{6}$/i.test(color)) output = `<font color="#${color.toLowerCase()}">${output}</font>`;
+  return output;
 }
 function paragraphHtml(paragraph, links, trailingBreak = false) {
   let content = '';
@@ -254,18 +295,11 @@ export async function renderDocxXml(arrayBuffer) {
   } flush(); return blocks.join('');
 }
 
-export async function convertDocx(file, mammoth) {
+export async function convertDocx(file) {
   const validity = validateDocxFile(file); if (!validity.ok) throw new Error(validity.message);
   if (!await assertDocxSignature(file)) throw new Error('此檔案不是有效的 DOCX（缺少 ZIP 簽名），可能已損毀或加密。');
   try {
-    // Mammoth provides compatibility diagnostics and basic document semantics. Its output omits
-    // arbitrary run color/font-size (and defaults to omitting underline), so the narrow OOXML
-    // run-properties renderer above deliberately supplies required color/size/underline fidelity.
-    const arrayBuffer = await file.arrayBuffer();
-    // Read the required document part first so missing/corrupt OOXML receives a useful local error,
-    // rather than a parser-specific diagnostic from optional compatibility analysis.
-    const html = await renderDocxXml(arrayBuffer);
-    const mammothResult = mammoth ? await mammoth.convertToHtml({ arrayBuffer }, { styleMap: ['u => u'] }) : { messages: [] };
-    return { html: prettyPrintEmailHtml(sanitizeEmailHtml(html)), warnings: mammothResult.messages.map((item) => item.message) };
+    const html = await renderDocxXml(await file.arrayBuffer());
+    return { html: prettyPrintEmailHtml(sanitizeEmailHtml(html)), warnings: [] };
   } catch (error) { throw new Error(`無法轉換 DOCX：${error.message || '檔案可能已損毀、受密碼保護或包含不支援的內容。'}`); }
 }
