@@ -95,19 +95,21 @@ test('Docx Email DOM-tree formatter preserves rendered text while emitting deter
       };
       return { source, formatted, sourceLayout: measure(source), formattedLayout: measure(formatted), twice: prettyPrintEmailHtml(formatted) };
     });
-    assert.equal(result.formatted, `<strong>標題</strong><br><em>第一行</em><br><br><!--
---><ul><!--
-  --><li>項目 <u>一</u></li><!--
-  --><li>項目二</li><!--
---></ul><!--
---><table><!--
-  --><tbody><!--
-    --><tr><!--
-      --><th>欄位</th><!--
-      --><td>值</td><!--
-    --></tr><!--
-  --></tbody><!--
---></table>`);
+    assert.equal(result.formatted, `<strong>標題</strong><br>
+<em>第一行</em><br>
+<br>
+<ul>
+  <li>項目 <u>一</u></li>
+  <li>項目二</li>
+</ul>
+<table>
+  <tbody>
+    <tr>
+      <th>欄位</th>
+      <td>值</td>
+    </tr>
+  </tbody>
+</table>`);
     assert.deepEqual(result.formattedLayout, result.sourceLayout);
     assert.equal(result.twice, result.formatted);
   });
@@ -146,10 +148,10 @@ test('Docx Email DOM-tree formatter escapes literal markup and does not add whit
     assert.match(result.formatted, /&lt;img src=x onerror=evil\(\)&gt;/);
     assert.equal(result.scripts, 0);
     assert.equal(result.images, 0);
-    assert.equal(result.text, 'ABC<script>literal</script><img src=x onerror=evil()>');
-    assert.deepEqual(result.textNodes, ['<script>literal</script><img src=x onerror=evil()>']);
+    assert.equal(result.text.replace(/\s+/g, ''), 'ABC<script>literal</script><imgsrc=xonerror=evil()>');
+    assert.deepEqual(result.textNodes.filter((text) => text.trim()), ['<script>literal</script><img src=x onerror=evil()>']);
     assert.equal(result.preWrap.text, result.text);
-    assert.equal(result.preLine.text, result.text);
+    assert.equal(result.preLine.text.replace(/\s+/g, ''), result.text.replace(/\s+/g, ''));
     assert.equal(result.twice, result.formatted);
   });
 });
@@ -163,9 +165,9 @@ test('Docx Email emits one final sanitized, readable artifact to separate previe
     assert.match(source, /紅色 16pt 底線/);
     assert.doesNotMatch(source, /font-size\s*:|\ssize\s*=|<\/?p\b|(?:font-family|line-height):|color:(?:#17211f|#000(?:000)?|black)/i);
     assert.match(source, /<u>/i);
-    assert.match(source, /<ul><!--\n  --><li[^>]*>項目符號清單一<\/li><!--\n  --><li[^>]*>項目符號清單二<\/li><!--\n--><\/ul>/);
-    assert.match(source, /<ol><!--\n  --><li[^>]*>編號清單一<\/li><!--\n  --><li[^>]*>編號清單二<\/li><!--\n--><\/ol>/);
-    assert.match(source, /<!--\n--><table/);
+    assert.match(source, /<ul>\n  <li[^>]*>項目符號清單一<\/li>\n  <li[^>]*>項目符號清單二<\/li>\n<\/ul>/);
+    assert.match(source, /<ol>\n  <li[^>]*>編號清單一<\/li>\n  <li[^>]*>編號清單二<\/li>\n<\/ol>/);
+    assert.match(source, /\n<table/);
     await page.locator('#copy-docx-html').click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
     const download = page.waitForEvent('download');

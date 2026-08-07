@@ -29,7 +29,8 @@ const isDefaultStyle = (property, value) => property === 'color' && isDefaultCol
 const sanitizeStyle = (value) => value.split(';').map((declaration) => declaration.split(/:(.*)/s)).map(([property, styleValue]) => [property?.trim().toLowerCase(), styleValue?.trim()]).filter(([property, styleValue]) => allowedStyleProperties.has(property) && safeStyleValue(property, styleValue || '') && !isDefaultStyle(property, styleValue)).map(([property, styleValue]) => `${property}:${property === 'color' ? styleValue.toLowerCase() : styleValue}`).join(';');
 const esc = (text) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
 const structuralTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
-const formattingContainers = new Set(['ol', 'ul', 'table', 'thead', 'tbody', 'tr']);
+const readableBlockTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
+const readableVoidTags = new Set(['br', 'img']);
 
 // Tokenize the already-sanitized, conservative HTML subset without rewriting text or
 // attribute values. A DOM serializer would add whitespace to mixed inline content;
@@ -41,38 +42,42 @@ function htmlTokens(html) {
     let quote = ''; let end = cursor + 1;
     for (; end < html.length; end += 1) { const char = html[end]; if (quote) { if (char === quote) quote = ''; } else if (char === '"' || char === "'") quote = char; else if (char === '>') break; }
     if (end === html.length) { tokens.push({ type: 'text', value: html.slice(cursor) }); break; }
-    const value = html.slice(cursor, end + 1); const match = /^<\s*(\/)?\s*([a-z0-9-]+)/i.exec(value);
-    tokens.push(match ? { type: match[1] ? 'close' : /\/\s*>$/.test(value) ? 'void' : 'open', name: match[2].toLowerCase(), value } : { type: 'text', value }); cursor = end + 1;
+    const value = html.slice(cursor, end + 1); const comment = /^<!--([\s\S]*?)-->$/.exec(value); const match = /^<\s*(\/)?\s*([a-z0-9-]+)/i.exec(value);
+    tokens.push(comment ? { type: 'comment', value, content: comment[1] } : match ? { type: match[1] ? 'close' : /\/\s*>$/.test(value) ? 'void' : 'open', name: match[2].toLowerCase(), value } : { type: 'text', value }); cursor = end + 1;
   }
   return tokens;
 }
 
 function prettyPrintEmailHtmlFallback(html) {
-  const output = []; const stack = []; let depth = 0; let atLineStart = true; let lastWasStructuralClose = false;
-  const write = (value) => { output.push(value); atLineStart = value.endsWith('\n'); };
+  const output = []; const stack = []; let depth = 0; let boundary = null;
+  const write = (value) => { output.push(value); boundary = null; };
   const line = (indent) => {
-    const padding = '  '.repeat(indent); const previous = output[output.length - 1] || '';
-    if (/(?:^|\n) *$/.test(previous)) output[output.length - 1] = previous.replace(/ *$/, padding);
-    else write(`\n${padding}`);
-    atLineStart = false;
+    if (!output.length) return;
+    const value = `\n${'  '.repeat(indent)}`;
+    if (boundary != null) output[boundary] = value;
+    else { output.push(value); boundary = output.length - 1; }
   };
   for (const token of htmlTokens(html)) {
-    if (token.type === 'text') { if (!(formattingContainers.has(stack.at(-1)) && /[\n\r]/.test(token.value) && /^\s*$/.test(token.value))) write(token.value); lastWasStructuralClose = false; continue; }
     const isPre = token.name === 'pre' || stack.includes('pre');
     if (isPre) { write(token.value); if (token.type === 'open') stack.push(token.name); if (token.type === 'close') stack.pop(); continue; }
+    if (token.type === 'text') {
+      if (/^\s*$/.test(token.value) && /[\n\r]/.test(token.value)) continue;
+      const previous = output[output.length - 1] || '';
+      write(/^\n[ \t]*/.test(token.value) && /\n[ \t]*$/.test(previous) ? token.value.replace(/^\n[ \t]*/, '') : token.value);
+      continue;
+    }
+    if (token.type === 'comment') { if (token.content.trim()) { write(`<!--${token.content}-->`); line(depth); } continue; }
     const structural = structuralTags.has(token.name);
     if (token.type === 'close') {
-      if (structural) { depth = Math.max(0, depth - 1); if (lastWasStructuralClose || formattingContainers.has(token.name)) line(depth); }
-      write(token.value); stack.pop(); lastWasStructuralClose = structural; continue;
+      if (structural) depth = Math.max(0, depth - 1);
+      if (structural && ['ol', 'ul', 'table', 'thead', 'tbody', 'tr'].includes(token.name)) line(depth);
+      write(token.value); stack.pop(); continue;
     }
     if (structural) line(depth);
-    write(token.value); if (token.type === 'open') stack.push(token.name); if (structural) depth += 1; lastWasStructuralClose = false;
+    write(token.value); if (token.type === 'open') stack.push(token.name); if (structural) depth += 1; if (token.name === 'br') line(Math.max(0, depth - 1));
   }
-  return output.join('');
+  return output.join('').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n');
 }
-
-const readableBlockTags = new Set(['p', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th']);
-const readableVoidTags = new Set(['br', 'img']);
 
 function escapeAttribute(value) {
   return value.replace(/[&<>"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]);
@@ -84,6 +89,7 @@ function serializeReadableElement(element, depth, writeLine, write) {
   const opening = `<${tag}${attributes}>`;
   if (readableVoidTags.has(tag)) {
     write(opening);
+    if (tag === 'br') writeLine(Math.max(0, depth - 1));
     return;
   }
 
@@ -95,22 +101,25 @@ function serializeReadableElement(element, depth, writeLine, write) {
   }
 
   const children = Array.from(element.childNodes);
-  const hasBlockChild = children.some((childNode) => childNode.nodeType === 1 && readableBlockTags.has(childNode.localName.toLowerCase()));
+  const ownsStructuralLayout = readableBlockTags.has(tag) && children.some((childNode) => childNode.nodeType === 1 && readableBlockTags.has(childNode.localName.toLowerCase()));
   for (const childNode of children) {
     if (childNode.nodeType === 3) {
-      // Formatting comments are non-text DOM nodes after reparse. Discard only the old
-      // formatter's whitespace-only indentation nodes; inline content stays exact.
-      if (hasBlockChild && /^\s*$/.test(childNode.nodeValue) && /[\r\n]/.test(childNode.nodeValue)) continue;
-      write(esc(childNode.nodeValue));
-    } else if (childNode.nodeType === 8 && /^\n *$/.test(childNode.nodeValue)) {
-      continue;
+      // Ignore only indentation reintroduced by this serializer. Text containing visible
+      // characters (including template variables and Unicode) remains byte-for-byte.
+      if (/^\s*$/.test(childNode.nodeValue) && /[\r\n]/.test(childNode.nodeValue)) continue;
+      // A preceding <br> already owns this source line. Browser parsing exposes the
+      // serializer newline as part of the following text node; retain user text only.
+      const followsBreak = childNode.previousSibling?.nodeType === 1 && childNode.previousSibling.localName.toLowerCase() === 'br';
+      write(esc(followsBreak ? childNode.nodeValue.replace(/^\n[ \t]*/, '') : childNode.nodeValue.replace(/^\n[ \t]*/, '')));
+    } else if (childNode.nodeType === 8) {
+      if (childNode.nodeValue.trim()) { write(`<!--${childNode.nodeValue}-->`); writeLine(depth + 1); }
     } else if (childNode.nodeType === 1) {
       const childTag = childNode.localName.toLowerCase();
-      if (readableBlockTags.has(childTag)) writeLine(depth + 1);
+      if (readableBlockTags.has(childTag) && ownsStructuralLayout) writeLine(depth + 1);
       serializeReadableElement(childNode, depth + 1, writeLine, write);
     }
   }
-  if (hasBlockChild) writeLine(depth);
+  if (ownsStructuralLayout) writeLine(depth);
   write(`</${tag}>`);
 }
 
@@ -120,24 +129,28 @@ export function prettyPrintEmailHtml(html) {
   if (typeof DOMParser === 'undefined') return prettyPrintEmailHtmlFallback(html);
   const document = new DOMParser().parseFromString(html, 'text/html');
   const output = [];
-  let hasOutput = false;
-  const write = (value) => { output.push(value); hasOutput ||= value.length > 0; };
+  let hasOutput = false; let boundary = null;
+  const write = (value) => { output.push(value); hasOutput ||= value.length > 0; boundary = null; };
   const writeLine = (depth) => {
-    if (hasOutput) output.push(`<!--\n${'  '.repeat(depth)}-->`);
+    if (!hasOutput || depth == null) return;
+    const value = `\n${'  '.repeat(depth)}`;
+    if (boundary != null) output[boundary] = value;
+    else { output.push(value); boundary = output.length - 1; }
   };
 
   for (const node of document.body.childNodes) {
     if (node.nodeType === 3) {
       if (/^\s*$/.test(node.nodeValue) && /[\r\n]/.test(node.nodeValue)) continue;
-      write(esc(node.nodeValue));
-    } else if (node.nodeType === 8 && /^\n *$/.test(node.nodeValue)) {
-      continue;
+      const followsBreak = node.previousSibling?.nodeType === 1 && node.previousSibling.localName.toLowerCase() === 'br';
+      write(esc(followsBreak ? node.nodeValue.replace(/^\n[ \t]*/, '') : node.nodeValue.replace(/^\n[ \t]*/, '')));
+    } else if (node.nodeType === 8) {
+      if (node.nodeValue.trim()) { write(`<!--${node.nodeValue}-->`); writeLine(0); }
     } else if (node.nodeType === 1) {
       if (readableBlockTags.has(node.localName.toLowerCase())) writeLine(0);
       serializeReadableElement(node, 0, writeLine, write);
     }
   }
-  return output.join('');
+  return output.join('').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n');
 }
 
 const children = (node, name) => Array.from(node?.childNodes || []).filter((child) => child.nodeType === 1 && child.localName === name);
@@ -159,7 +172,7 @@ export async function assertDocxSignature(file) { const bytes = new Uint8Array(a
 
 export function sanitizeEmailHtml(dirty) {
   if (typeof DOMParser === 'undefined') {
-    const escaped = [];
+    const escaped = []; const comments = [];
     const fontStack = [];
     const protect = (input) => input.replace(/&lt;[\s\S]*?&gt;/gi, (text) => `@@ESCAPED${escaped.push(text) - 1}@@`);
     const parseAttributes = (source) => {
@@ -188,8 +201,9 @@ export function sanitizeEmailHtml(dirty) {
       if (name === 'a' && attributes.has('href') && safeUrl(attributes.get('href'))) output.push('target="_blank"', 'rel="noopener noreferrer"');
       return `<${name}${output.length ? ` ${output.join(' ')}` : ''}>`;
     };
-    const cleaned = protect(dirty).replace(/<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, sanitizeTag);
-    return prettyPrintEmailHtml(cleaned.replace(/@@ESCAPED(\d+)@@/g, (_match, index) => escaped[index]));
+    const protectComments = (input) => input.replace(/<!--([\s\S]*?)-->/g, (_match, content) => (content.trim() ? `@@COMMENT${comments.push(content) - 1}@@` : ''));
+    const cleaned = protect(protectComments(dirty)).replace(/<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, sanitizeTag);
+    return prettyPrintEmailHtml(cleaned.replace(/@@ESCAPED(\d+)@@/g, (_match, index) => escaped[index]).replace(/@@COMMENT(\d+)@@/g, (_match, index) => `<!--${comments[index]}-->`));
   }
   const doc = new DOMParser().parseFromString(dirty, 'text/html');
   for (const element of [...doc.body.querySelectorAll('*')]) {
