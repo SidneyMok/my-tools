@@ -250,22 +250,31 @@ test('Docx Email preserves the source-runs artifact byte-for-byte across editor,
   });
 });
 
-test('Docx Email shows only the exact ordered common-variable catalog and searchable immutable insertion', async () => {
-  const fields = ['policyNo', 'paymentDate', 'paymentDateEn', 'currency', 'premiumPayable', 'dda', 'paymentFrequency', 'paymentFrequencyEn', 'ownerName', 'ownerPinyin', 'ownerTitle', 'ownerTitleEn', 'insuredName', 'insuredPinyin', 'insuredTitle', 'insuredTitleEn', 'companyName', 'companyNameEnglish', 'productName', 'productNameEnglish', 'productYear', 'sumAssured', 'notifyDate', 'notifyDateEn', 'coolingOffDateEn'];
+test('Docx Email groups built-in variables uniquely in the exact 中文、英文、通用 order and inserts searchable members literally', async () => {
+  const groups = {
+    中文: ['paymentDate', 'companyName', 'ownerName', 'insuredName', 'productName', 'paymentFrequency', 'ownerTitle', 'insuredTitle', 'notifyDate'],
+    英文: ['paymentDateEn', 'companyNameEnglish', 'ownerPinyin', 'insuredPinyin', 'productNameEnglish', 'paymentFrequencyEn', 'ownerTitleEn', 'insuredTitleEn', 'notifyDateEn', 'coolingOffDateEn'],
+    通用: ['policyNo', 'currency', 'premiumPayable', 'dda', 'sumAssured', 'productYear']
+  };
   await withPage(async ({ page, url }) => {
     await page.goto(url); await uploadFixture(page);
     const catalog = page.locator('#variable-list');
-    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['常用变量', '自定义变量']);
-    assert.deepEqual(await page.locator('[data-variable-kind="builtin"]').evaluateAll((buttons) => buttons.map((button) => button.dataset.variableField)), fields);
-    assert.equal(await page.locator('[data-variable-kind="builtin"]').count(), 25);
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['中文', '英文', '通用', '自定义变量']);
+    const renderedGroups = await page.locator('.variable-group').evaluateAll((sections) => Object.fromEntries(sections.slice(0, 3).map((section) => [section.querySelector('h3').textContent, Array.from(section.querySelectorAll('[data-variable-kind="builtin"]'), (button) => button.dataset.variableField)])));
+    assert.deepEqual(renderedGroups, groups);
+    const builtins = Object.values(renderedGroups).flat();
+    assert.equal(builtins.length, 25);
+    assert.equal(new Set(builtins).size, builtins.length);
+    assert.deepEqual(groups.通用, ['policyNo', 'currency', 'premiumPayable', 'dda', 'sumAssured', 'productYear']);
     assert.equal(await page.locator('#toggle-variable-catalog').count(), 0);
     assert.equal(await catalog.evaluate((element) => getComputedStyle(element).overflowY), 'visible');
-    for (const legacy of ['policyId', 'robotUpdate', 'salesName', 'approvalDate', '保單與繳費', '日期與狀態']) assert.equal(await page.getByText(legacy, { exact: true }).count(), 0, `${legacy} must not remain`);
+    for (const legacy of ['常用变量', 'policyId', 'robotUpdate', 'salesName', 'approvalDate', '保單與繳費', '日期與狀態']) assert.equal(await page.getByText(legacy, { exact: true }).count(), 0, `${legacy} must not remain`);
     assert.match(await page.locator('[data-variable-kind="builtin"][data-variable-field="policyNo"]').textContent(), /唯讀/);
-    await page.locator('#variable-search').fill('冷靜期結束日（英文）');
-    assert.deepEqual(await page.locator('[data-variable-kind="builtin"]').evaluateAll((buttons) => buttons.map((button) => button.dataset.variableField)), ['coolingOffDateEn']);
-    await page.locator('#docx-source').selectText(); await page.locator('[data-variable-field="coolingOffDateEn"]').click();
-    assert.equal(await page.locator('#docx-source').inputValue(), '${coolingOffDateEn}');
+    await page.locator('#variable-search').fill('保險公司英文名');
+    assert.deepEqual(await page.locator('.variable-group h3').allTextContents(), ['中文', '英文', '通用', '自定义变量']);
+    assert.deepEqual(await page.locator('[data-variable-kind="builtin"]').evaluateAll((buttons) => buttons.map((button) => button.dataset.variableField)), ['companyNameEnglish']);
+    await page.locator('#docx-source').selectText(); await page.locator('[data-variable-field="companyNameEnglish"]').click();
+    assert.equal(await page.locator('#docx-source').inputValue(), '${companyNameEnglish}');
     assert.equal(await page.locator('#open-docx-preview').isDisabled(), false);
   });
 });

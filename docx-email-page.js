@@ -1,8 +1,14 @@
 import { convertDocx } from './docx-email.js';
 
 const BUILTIN_GROUPS = [
-  ['常用变量', [
-    ['policyNo', '保單號'], ['paymentDate', '繳費日期'], ['paymentDateEn', '繳費日期（英文）'], ['currency', '貨幣'], ['premiumPayable', '應繳保費'], ['dda', '自動扣款 DDA'], ['paymentFrequency', '繳費頻率'], ['paymentFrequencyEn', '繳費頻率（英文）'], ['ownerName', '投保人'], ['ownerPinyin', '投保人英文名'], ['ownerTitle', '投保人稱謂（中文）'], ['ownerTitleEn', '投保人稱謂（英文）'], ['insuredName', '受保人名稱'], ['insuredPinyin', '受保人英文名'], ['insuredTitle', '受保人稱謂（中文）'], ['insuredTitleEn', '受保人稱謂（英文）'], ['companyName', '保險公司'], ['companyNameEnglish', '保險公司英文名'], ['productName', '產品名稱'], ['productNameEnglish', '產品名稱（英文）'], ['productYear', '產品年期'], ['sumAssured', '保額'], ['notifyDate', '通知日期'], ['notifyDateEn', '通知日期（英文）'], ['coolingOffDateEn', '冷靜期結束日（英文）']
+  ['中文', [
+    ['paymentDate', '繳費日期'], ['companyName', '保險公司'], ['ownerName', '投保人'], ['insuredName', '受保人名稱'], ['productName', '產品名稱'], ['paymentFrequency', '繳費頻率'], ['ownerTitle', '投保人稱謂（中文）'], ['insuredTitle', '受保人稱謂（中文）'], ['notifyDate', '通知日期']
+  ]],
+  ['英文', [
+    ['paymentDateEn', '繳費日期（英文）'], ['companyNameEnglish', '保險公司英文名'], ['ownerPinyin', '投保人英文名'], ['insuredPinyin', '受保人英文名'], ['productNameEnglish', '產品名稱（英文）'], ['paymentFrequencyEn', '繳費頻率（英文）'], ['ownerTitleEn', '投保人稱謂（英文）'], ['insuredTitleEn', '受保人稱謂（英文）'], ['notifyDateEn', '通知日期（英文）'], ['coolingOffDateEn', '冷靜期結束日（英文）']
+  ]],
+  ['通用', [
+    ['policyNo', '保單號'], ['currency', '貨幣'], ['premiumPayable', '應繳保費'], ['dda', '自動扣款 DDA'], ['sumAssured', '保額'], ['productYear', '產品年期']
   ]]
 ].map(([group, variables]) => ({ group, variables: variables.map(([field, label]) => ({ field, label })) }));
 const CUSTOM_STORAGE_KEY = 'docx-email-custom-variables-v1';
