@@ -151,14 +151,14 @@ test('fallback decodes numeric and basic attribute entities once and remains byt
   }
 });
 
-test('fallback rejects entity-obfuscated script URLs and retains decoded safe HTTPS URLs', () => {
+test('pure Node fallback rejects numeric-entity-obfuscated URLs and retains safe HTTPS URLs', () => {
   const savedDomParser = globalThis.DOMParser;
-  const input = '<a href="jav&#x61;script:alert(1)">numeric</a><img src="javascript&colon;alert(1)"><a href="https&colon;//safe.example/path?x=1&amp;y=2">safe link</a><img src="https&colon;//safe.example/image.png?x=1&amp;y=2">';
+  const input = '<a href="jav&#x61;script&#58;alert(1)">js</a><img src="d&#97;ta&#58;text/html,x"><a href="vb&#115;cript&#58;evil">vbs</a><a href="http&#115;&#58;//safe.example/path?x=1&amp;y=2">safe link</a>';
   try {
     globalThis.DOMParser = undefined;
     const first = sanitizeEmailHtml(input);
-    assert.equal(first, '<a>numeric</a><img><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a><img src="https://safe.example/image.png?x=1&amp;y=2">');
-    assert.doesNotMatch(first, /javascript:/i);
+    assert.equal(first, '<a>js</a><img><a>vbs</a><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a>');
+    assert.doesNotMatch(first, /(?:javascript|data|vbscript):/i);
     assert.equal(sanitizeEmailHtml(first), first);
   } finally {
     globalThis.DOMParser = savedDomParser;

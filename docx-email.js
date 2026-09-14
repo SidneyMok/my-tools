@@ -182,16 +182,10 @@ function decodeHtmlEntities(value) {
   if (typeof globalThis.document?.createElement === 'function') {
     const textarea = globalThis.document.createElement('textarea');
     textarea.innerHTML = value.replace(/</g, '&lt;');
-    const decoded = textarea.value || textarea.textContent || '';
-    textarea.remove();
-    return decoded;
+    return textarea.value;
   }
-  const named = {
-    amp: '&', AMP: '&', lt: '<', LT: '<', gt: '>', GT: '>', quot: '"', QUOT: '"', apos: "'", nbsp: '\u00a0',
-    copy: '©', reg: '®', colon: ':', Aacute: 'Á', aacute: 'á'
-  };
-  return value.replace(/&(?:#([xX][0-9a-fA-F]+|[0-9]+)|([A-Za-z][A-Za-z0-9]+));/g, (entity, numeric, name) => {
-    if (!numeric) return Object.prototype.hasOwnProperty.call(named, name) ? named[name] : entity;
+  return value.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|amp|lt|gt|quot|apos|nbsp);/gi, (entity, numeric) => {
+    if (!numeric) return ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&nbsp;': '\u00a0' })[entity.toLowerCase()] || entity;
     const codePoint = numeric[0].toLowerCase() === 'x' ? Number.parseInt(numeric.slice(1), 16) : Number.parseInt(numeric, 10);
     return Number.isFinite(codePoint) && codePoint <= 0x10ffff && !(codePoint >= 0xd800 && codePoint <= 0xdfff) ? String.fromCodePoint(codePoint) : entity;
   });

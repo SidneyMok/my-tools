@@ -103,7 +103,7 @@ test('Docx Email URL sanitization has DOM/fallback parity for entity-obfuscated 
     await page.goto(url);
     const result = await page.evaluate(async () => {
       const { sanitizeEmailHtml } = await import('./docx-email.js');
-      const input = '<a href="jav&#x61;script:alert(1)">numeric</a><img src="javascript&colon;alert(1)"><a href="https&colon;//safe.example/path?x=1&amp;y=2">safe link</a><img src="https&colon;//safe.example/image.png?x=1&amp;y=2">';
+      const input = '<a href="javascript&colon;alert(1)">js</a><img src="data&colon;text/html,x"><a href="vbscript&colon;evil">vbs</a><a href="https&colon;//safe.example/path?x=1&amp;y=2">safe link</a><img src="https&colon;//safe.example/image.png?x=1&amp;y=2">';
       const savedDomParser = globalThis.DOMParser;
       const collect = () => { const first = sanitizeEmailHtml(input); return { first, second: sanitizeEmailHtml(first) }; };
       const dom = collect();
@@ -111,9 +111,9 @@ test('Docx Email URL sanitization has DOM/fallback parity for entity-obfuscated 
       finally { globalThis.DOMParser = savedDomParser; }
     });
     assert.deepEqual(result.fallback, result.dom);
-    assert.equal(result.dom.first, '<a>numeric</a><img><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a><img src="https://safe.example/image.png?x=1&amp;y=2">');
+    assert.equal(result.dom.first, '<a>js</a><img><a>vbs</a><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a><img src="https://safe.example/image.png?x=1&amp;y=2">');
     assert.equal(result.dom.second, result.dom.first);
-    assert.doesNotMatch(result.dom.first, /javascript:/i);
+    assert.doesNotMatch(result.dom.first, /(?:javascript|data|vbscript):/i);
   });
 });
 
