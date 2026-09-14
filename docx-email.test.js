@@ -124,6 +124,68 @@ test('OOXML bold emits strong only for enabled values', async () => {
   for (const bold of ['<w:b/>', '<w:b w:val="1"/>', '<w:b w:val="true"/>', '<w:b w:val="on"/>', '<w:b w:val="TRUE"/>']) assert.match(await render(bold), /<strong>bold<\/strong>/);
 });
 
+test('sanitizer merges only directly adjacent equivalent strong and em siblings', () => {
+  assert.equal(sanitizeEmailHtml('<strong>A</strong><strong>B</strong><strong>C</strong>'), '<strong>ABC</strong>');
+  assert.equal(sanitizeEmailHtml('<em>A</em><em>B</em><em>C</em>'), '<em>ABC</em>');
+  assert.equal(sanitizeEmailHtml('<strong>A</strong> <strong>B</strong><!--keep--><strong>C</strong><br><strong>D</strong><u><strong>E</strong><strong>F</strong></u>'), '<strong>A</strong> <strong>B</strong><!--keep-->\n<strong>C</strong><br>\n<strong>D</strong><u><strong>EF</strong></u>');
+  assert.equal(sanitizeEmailHtml('<strong style="color:#123456">A</strong><strong style="color:#123456">B</strong>'), '<strong style="color:#123456">AB</strong>');
+  assert.equal(sanitizeEmailHtml('<strong style="color:#123456">A</strong><strong style="color:#654321">B</strong>'), '<strong style="color:#123456">A</strong><strong style="color:#654321">B</strong>');
+});
+
+test('adjacent-mark normalization is byte-idempotent', () => {
+  const input = '<strong>A</strong><strong>B</strong><em>C</em><em>D</em><strong>E</strong>';
+  const first = sanitizeEmailHtml(input);
+  assert.equal(sanitizeEmailHtml(first), first);
+});
+
+test('fallback decodes numeric and basic attribute entities once and remains byte-idempotent', () => {
+  const savedDomParser = globalThis.DOMParser;
+  const input = '<strong title="A&amp;B">a</strong><strong title="A&#38;B">b</strong><em title="A&lt;B">c</em><em title="A&#60;B">d</em><strong title="A&gt;B">e</strong><strong title="A&#62;B">f</strong><em title="A&quot;B">g</em><em title="A&#34;B">h</em><strong title="A&apos;B">i</strong><strong title="A&#39;B">j</strong><em title="A&nbsp;B">k</em><em title="A&#xA0;B">l</em>';
+  try {
+    globalThis.DOMParser = undefined;
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, '<strong title="A&amp;B">ab</strong><em title="A&lt;B">cd</em><strong title="A&gt;B">ef</strong><em title="A&quot;B">gh</em><strong title="A\'B">ij</strong><em title="A B">kl</em>');
+    assert.equal(sanitizeEmailHtml(first), first);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
+});
+
+test('pure Node fallback rejects numeric-entity-obfuscated URLs and retains safe HTTPS URLs', () => {
+  const savedDomParser = globalThis.DOMParser;
+  const input = '<a href="jav&#x61;script&#58;alert(1)">js</a><img src="d&#97;ta&#58;text/html,x"><a href="vb&#115;cript&#58;evil">vbs</a><a href="http&#115;&#58;//safe.example/path?x=1&amp;y=2">safe link</a>';
+  try {
+    globalThis.DOMParser = undefined;
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, '<a>js</a><img><a>vbs</a><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a>');
+    assert.doesNotMatch(first, /(?:javascript|data|vbscript):/i);
+    assert.equal(sanitizeEmailHtml(first), first);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
+});
+
+test('nested adjacent-mark normalization reaches the fixed point in one pass', () => {
+  for (const [input, expected] of [
+    ['<strong><em>A</em><em>B</em></strong>', '<strong><em>AB</em></strong>'],
+    ['<strong><em>A</em></strong><strong><em>B</em></strong>', '<strong><em>AB</em></strong>'],
+    ['<strong><em>A</em></strong><strong><em>B</em></strong><strong><em>C</em></strong>', '<strong><em>ABC</em></strong>'],
+    ['<em><strong>A</strong></em><em><strong>B</strong></em>', '<em><strong>AB</strong></em>'],
+    ['<em><strong>A</strong></em><em><strong>B</strong></em><em><strong>C</strong></em>', '<em><strong>ABC</strong></em>']
+  ]) {
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, expected);
+    assert.equal(sanitizeEmailHtml(first), expected);
+  }
+});
+
+test('adjacent equivalent OOXML runs become one semantic marked element', async () => {
+  const documentXml = `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>one</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>two</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>three</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>four</w:t></w:r><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>five</w:t></w:r><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>six</w:t></w:r></w:p></w:body></w:document>`;
+  const bytes = await new JSZip().file('word/document.xml', documentXml).generateAsync({ type: 'arraybuffer' });
+  const html = await convertDocx(new File([bytes], 'adjacent-runs.docx')).then(({ html: output }) => output);
+  assert.equal(html, '<strong>onetwo</strong><em>threefour<strong>fivesix</strong></em>');
+});
+
 test('formats sanitized HTML deterministically without changing text-node whitespace or active-markup safety', () => {
   const dirty = '<p onclick="evil()"> 前後  空白 <strong>保留  內部空白</strong> 尾端 </p><ul><li>第一項</li><li>第二項</li></ul><script>evil()</script>';
   const sanitized = sanitizeEmailHtml(dirty);
