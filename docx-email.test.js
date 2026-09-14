@@ -124,6 +124,27 @@ test('OOXML bold emits strong only for enabled values', async () => {
   for (const bold of ['<w:b/>', '<w:b w:val="1"/>', '<w:b w:val="true"/>', '<w:b w:val="on"/>', '<w:b w:val="TRUE"/>']) assert.match(await render(bold), /<strong>bold<\/strong>/);
 });
 
+test('sanitizer merges only directly adjacent equivalent strong and em siblings', () => {
+  assert.equal(sanitizeEmailHtml('<strong>A</strong><strong>B</strong><strong>C</strong>'), '<strong>ABC</strong>');
+  assert.equal(sanitizeEmailHtml('<em>A</em><em>B</em><em>C</em>'), '<em>ABC</em>');
+  assert.equal(sanitizeEmailHtml('<strong>A</strong> <strong>B</strong><!--keep--><strong>C</strong><br><strong>D</strong><u><strong>E</strong><strong>F</strong></u>'), '<strong>A</strong> <strong>B</strong><!--keep-->\n<strong>C</strong><br>\n<strong>D</strong><u><strong>EF</strong></u>');
+  assert.equal(sanitizeEmailHtml('<strong style="color:#123456">A</strong><strong style="color:#123456">B</strong>'), '<strong style="color:#123456">AB</strong>');
+  assert.equal(sanitizeEmailHtml('<strong style="color:#123456">A</strong><strong style="color:#654321">B</strong>'), '<strong style="color:#123456">A</strong><strong style="color:#654321">B</strong>');
+});
+
+test('adjacent-mark normalization is byte-idempotent', () => {
+  const input = '<strong>A</strong><strong>B</strong><em>C</em><em>D</em><strong>E</strong>';
+  const first = sanitizeEmailHtml(input);
+  assert.equal(sanitizeEmailHtml(first), first);
+});
+
+test('adjacent equivalent OOXML runs become one semantic marked element', async () => {
+  const documentXml = `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>one</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>two</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>three</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>four</w:t></w:r><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>five</w:t></w:r><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>six</w:t></w:r></w:p></w:body></w:document>`;
+  const bytes = await new JSZip().file('word/document.xml', documentXml).generateAsync({ type: 'arraybuffer' });
+  const html = await convertDocx(new File([bytes], 'adjacent-runs.docx')).then(({ html: output }) => output);
+  assert.equal(html, '<strong>onetwo</strong><em>threefour<strong>fivesix</strong></em>');
+});
+
 test('formats sanitized HTML deterministically without changing text-node whitespace or active-markup safety', () => {
   const dirty = '<p onclick="evil()"> 前後  空白 <strong>保留  內部空白</strong> 尾端 </p><ul><li>第一項</li><li>第二項</li></ul><script>evil()</script>';
   const sanitized = sanitizeEmailHtml(dirty);

@@ -51,6 +51,65 @@ function htmlTokens(html) {
   return tokens;
 }
 
+// Keep formatting runs semantic without crossing any source boundary. A tree is used here
+// instead of a string replacement so comments, whitespace, breaks, links, and nested marks
+// remain real siblings that prevent a merge.
+function mergeAdjacentMarkedElements(html) {
+  const voidNames = new Set(['br', 'img']);
+  const tokens = htmlTokens(html)
+    .filter((token) => !(token.type === 'close' && voidNames.has(token.name)))
+    .map((token) => token.type === 'open' && voidNames.has(token.name) ? { ...token, type: 'void' } : token);
+  const parseAttributes = (value) => {
+    const attributes = new Map();
+    const source = value.replace(/^<\s*[a-z0-9-]+/i, '').replace(/\/?>\s*$/, '');
+    for (const match of source.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g)) {
+      attributes.set(match[1].toLowerCase(), match[2] ?? match[3] ?? match[4] ?? '');
+    }
+    return attributes;
+  };
+  const sameAttributes = (left, right) => {
+    const first = parseAttributes(left.open); const second = parseAttributes(right.open);
+    if (first.size !== second.size) return false;
+    return [...first].every(([name, value]) => second.get(name) === value);
+  };
+  const canonicalOpen = (token) => {
+    const attributes = parseAttributes(token.value);
+    const serialized = [...attributes].map(([name, value]) => ` ${name}="${escapeAttribute(decodeHtmlEntities(value))}"`).join('');
+    return `<${token.name}${serialized}>`;
+  };
+  const parse = (start, closingName) => {
+    const children = []; let index = start;
+    while (index < tokens.length) {
+      const token = tokens[index];
+      if (token.type === 'close' && (!closingName || token.name === closingName)) return { children, index: index + 1, close: token.value };
+      if (token.type === 'open' && !voidNames.has(token.name)) {
+        const nested = parse(index + 1, token.name);
+        children.push({ kind: 'element', name: token.name, open: canonicalOpen(token), children: nested.children, close: nested.close ? `</${token.name}>` : '' });
+        index = nested.index;
+      } else {
+        const value = token.type === 'close' ? `</${token.name}>` : token.type === 'void' ? canonicalOpen(token) : token.value;
+        children.push({ kind: 'raw', value }); index += 1;
+      }
+    }
+    return { children, index, close: '' };
+  };
+  const render = (nodes) => nodes.map((node) => node.kind === 'raw' ? node.value : `${node.open}${render(node.children)}${node.close}`).join('');
+  const normalize = (nodes) => {
+    for (const node of nodes) if (node.kind === 'element') normalize(node.children);
+    const output = [];
+    for (const node of nodes) {
+      const previous = output.at(-1);
+      if (previous?.kind === 'element' && node.kind === 'element' && ['strong', 'em'].includes(node.name) && previous.name === node.name && sameAttributes(previous, node)) {
+        previous.children.push(...node.children);
+      } else output.push(node);
+    }
+    nodes.splice(0, nodes.length, ...output);
+  };
+  const root = parse(0).children;
+  normalize(root);
+  return render(root);
+}
+
 // This operates on the sanitizer's conservative token stream, rather than a string-wide
 // replacement: paragraphs are unwrapped and receive their mail-compatible separators only
 // when they have a following element sibling at the same structural level.
@@ -118,6 +177,14 @@ function escapeAttribute(value) {
   return value.replace(/[&<>"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]);
 }
 
+function decodeHtmlEntities(value) {
+  return value.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|amp|lt|gt|quot|apos|nbsp);/gi, (entity, numeric) => {
+    if (!numeric) return ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&nbsp;': '\u00a0' })[entity.toLowerCase()] || entity;
+    const codePoint = numeric[0].toLowerCase() === 'x' ? Number.parseInt(numeric.slice(1), 16) : Number.parseInt(numeric, 10);
+    return Number.isFinite(codePoint) && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+  });
+}
+
 function serializeReadableElement(element, depth, writeLine, write) {
   const tag = element.localName.toLowerCase();
   const attributes = Array.from(element.attributes, (attribute) => ` ${attribute.name}="${escapeAttribute(attribute.value)}"`).join('');
@@ -161,6 +228,7 @@ function serializeReadableElement(element, depth, writeLine, write) {
 // The final artifact is parsed after sanitization, then serialized from its DOM tree. This makes
 // structural formatting deterministic without inserting text nodes into inline content flow.
 export function prettyPrintEmailHtml(html) {
+  html = mergeAdjacentMarkedElements(html);
   if (typeof DOMParser === 'undefined') return prettyPrintEmailHtmlFallback(html);
   const document = new DOMParser().parseFromString(html, 'text/html');
   const output = [];

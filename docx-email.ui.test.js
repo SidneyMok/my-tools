@@ -55,6 +55,25 @@ test('docx email loads only the local JSZip parser bundle, never an obsolete con
   });
 });
 
+test('Docx Email merge normalization is byte-identical between DOMParser and fallback paths', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml } = await import('./docx-email.js');
+      const input = '<strong>A</strong><strong>B</strong><strong>C</strong> <strong>D</strong><!--keep--><strong>E</strong><br><strong>F</strong><em>G</em><em>H</em><u><strong>I</strong><strong>J</strong></u>';
+      const dom = sanitizeEmailHtml(input);
+      const parser = globalThis.DOMParser;
+      globalThis.DOMParser = undefined;
+      const fallback = sanitizeEmailHtml(input);
+      globalThis.DOMParser = parser;
+      return { dom, fallback, domAgain: sanitizeEmailHtml(dom), fallbackAgain: (() => { globalThis.DOMParser = undefined; const value = sanitizeEmailHtml(fallback); globalThis.DOMParser = parser; return value; })() };
+    });
+    assert.equal(result.fallback, result.dom);
+    assert.equal(result.domAgain, result.dom);
+    assert.equal(result.fallbackAgain, result.fallback);
+  });
+});
+
 test('Docx Email browser DOMParser sanitizer strips target styles and is byte-idempotent for default, table, and cell styles', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
@@ -84,6 +103,37 @@ test('Docx Email browser sanitizer matches the Node fallback contract for paragr
     const expected = '第一段<br>\n<br>\n第二段 <a title="連結" href="https://example.com" target="_blank" rel="noopener noreferrer">link</a><br>\n<br>\n<ul>\n  <li>項目一</li>\n  <li>項目二</li>\n</ul>\n<table style="border-collapse:collapse;width:100%">\n  <tbody>\n    <tr>\n      <th colspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">標題</th>\n      <td rowspan="2" style="border:1px solid #dce4df;padding:8px;vertical-align:top">值</td>\n    </tr>\n  </tbody>\n</table>';
     assert.equal(browser.first, expected);
     assert.equal(browser.second, expected);
+  });
+});
+
+test('Docx Email adjacent-mark normalization is byte-identical with and without DOMParser', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const inputs = [
+      '<strong>A</strong><strong>B</strong><strong>C</strong>',
+      '<em STYLE="color:#123456">A</em><em style=\'color:#123456\'>B</em>',
+      '<strong>A</strong> <strong>B</strong><!--keep--><strong>C</strong><br><strong>D</strong>',
+      '<a title=\'link\' href="https://example.com"><strong>A</strong><strong>B</strong></a>',
+      '<em><strong>A</strong><strong>B</strong></em>',
+      '<p><strong>A</strong><strong>B</strong></p><p><em>C</em><em>D</em></p>'
+    ];
+    const result = await page.evaluate(async (sources) => {
+      const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
+      const collect = () => sources.map((source) => {
+        const sanitized = sanitizeEmailHtml(source);
+        const pretty = prettyPrintEmailHtml(source);
+        return { sanitized, pretty, sanitizedTwice: sanitizeEmailHtml(sanitized), prettyTwice: prettyPrintEmailHtml(pretty) };
+      });
+      const dom = collect();
+      const savedDomParser = globalThis.DOMParser;
+      try { globalThis.DOMParser = undefined; return { dom, fallback: collect() }; }
+      finally { globalThis.DOMParser = savedDomParser; }
+    }, inputs);
+    assert.deepEqual(result.fallback, result.dom);
+    for (const values of result.dom) {
+      assert.equal(values.sanitizedTwice, values.sanitized);
+      assert.equal(values.prettyTwice, values.pretty);
+    }
   });
 });
 
