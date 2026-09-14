@@ -138,6 +138,20 @@ test('adjacent-mark normalization is byte-idempotent', () => {
   assert.equal(sanitizeEmailHtml(first), first);
 });
 
+test('nested adjacent-mark normalization reaches the fixed point in one pass', () => {
+  for (const [input, expected] of [
+    ['<strong><em>A</em><em>B</em></strong>', '<strong><em>AB</em></strong>'],
+    ['<strong><em>A</em></strong><strong><em>B</em></strong>', '<strong><em>AB</em></strong>'],
+    ['<strong><em>A</em></strong><strong><em>B</em></strong><strong><em>C</em></strong>', '<strong><em>ABC</em></strong>'],
+    ['<em><strong>A</strong></em><em><strong>B</strong></em>', '<em><strong>AB</strong></em>'],
+    ['<em><strong>A</strong></em><em><strong>B</strong></em><em><strong>C</strong></em>', '<em><strong>ABC</strong></em>']
+  ]) {
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, expected);
+    assert.equal(sanitizeEmailHtml(first), expected);
+  }
+});
+
 test('adjacent equivalent OOXML runs become one semantic marked element', async () => {
   const documentXml = `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>one</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>two</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>three</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>four</w:t></w:r><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>five</w:t></w:r><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>six</w:t></w:r></w:p></w:body></w:document>`;
   const bytes = await new JSZip().file('word/document.xml', documentXml).generateAsync({ type: 'arraybuffer' });

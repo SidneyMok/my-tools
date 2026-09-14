@@ -101,6 +101,7 @@ function mergeAdjacentMarkedElements(html) {
       const previous = output.at(-1);
       if (previous?.kind === 'element' && node.kind === 'element' && ['strong', 'em'].includes(node.name) && previous.name === node.name && sameAttributes(previous, node)) {
         previous.children.push(...node.children);
+        normalize(previous.children);
       } else output.push(node);
     }
     nodes.splice(0, nodes.length, ...output);
