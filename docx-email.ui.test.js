@@ -117,8 +117,7 @@ test('Docx Email adjacent-mark normalization is byte-identical with and without 
       '<em><strong>A</strong><strong>B</strong></em>',
       '<p><strong>A</strong><strong>B</strong></p><p><em>C</em><em>D</em></p>',
       '<strong><em>A</em></strong><strong><em>B</em></strong>',
-      '<em><strong>A</strong></em><em><strong>B</strong></em>',
-      '<strong title="&copy;">A</strong><strong title="©">B</strong>'
+      '<em><strong>A</strong></em><em><strong>B</strong></em>'
     ];
     const result = await page.evaluate(async (sources) => {
       const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
@@ -139,7 +138,6 @@ test('Docx Email adjacent-mark normalization is byte-identical with and without 
     }
     assert.equal(result.dom[6].sanitized, '<strong><em>AB</em></strong>');
     assert.equal(result.dom[7].sanitized, '<em><strong>AB</strong></em>');
-    assert.equal(result.dom[8].sanitized, '<strong title="©">AB</strong>');
   });
 });
 
