@@ -74,6 +74,49 @@ test('Docx Email merge normalization is byte-identical between DOMParser and fal
   });
 });
 
+test('Docx Email entity attributes are byte-identical, merge-equivalent, and idempotent across DOMParser and fallback', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml, prettyPrintEmailHtml } = await import('./docx-email.js');
+      const input = '<strong title="&copy;">A</strong><strong title="©">B</strong><strong title="&reg;">C</strong><strong title="®">D</strong><em title="&Aacute;">E</em><em title="Á">F</em><em title="&aacute;">G</em><em title="á">H</em>';
+      const savedDomParser = globalThis.DOMParser;
+      const collect = () => {
+        const sanitized = sanitizeEmailHtml(input);
+        const pretty = prettyPrintEmailHtml(input);
+        return { sanitized, pretty, sanitizedTwice: sanitizeEmailHtml(sanitized), prettyTwice: prettyPrintEmailHtml(pretty) };
+      };
+      const dom = collect();
+      try { globalThis.DOMParser = undefined; return { dom, fallback: collect() }; }
+      finally { globalThis.DOMParser = savedDomParser; }
+    });
+    assert.deepEqual(result.fallback, result.dom);
+    assert.equal(result.dom.sanitized, '<strong title="©">AB</strong><strong title="®">CD</strong><em title="Á">EF</em><em title="á">GH</em>');
+    assert.equal(result.dom.pretty, result.dom.sanitized);
+    assert.equal(result.dom.sanitizedTwice, result.dom.sanitized);
+    assert.equal(result.dom.prettyTwice, result.dom.pretty);
+  });
+});
+
+test('Docx Email URL sanitization has DOM/fallback parity for entity-obfuscated schemes', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const result = await page.evaluate(async () => {
+      const { sanitizeEmailHtml } = await import('./docx-email.js');
+      const input = '<a href="jav&#x61;script:alert(1)">numeric</a><img src="javascript&colon;alert(1)"><a href="https&colon;//safe.example/path?x=1&amp;y=2">safe link</a><img src="https&colon;//safe.example/image.png?x=1&amp;y=2">';
+      const savedDomParser = globalThis.DOMParser;
+      const collect = () => { const first = sanitizeEmailHtml(input); return { first, second: sanitizeEmailHtml(first) }; };
+      const dom = collect();
+      try { globalThis.DOMParser = undefined; return { dom, fallback: collect() }; }
+      finally { globalThis.DOMParser = savedDomParser; }
+    });
+    assert.deepEqual(result.fallback, result.dom);
+    assert.equal(result.dom.first, '<a>numeric</a><img><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a><img src="https://safe.example/image.png?x=1&amp;y=2">');
+    assert.equal(result.dom.second, result.dom.first);
+    assert.doesNotMatch(result.dom.first, /javascript:/i);
+  });
+});
+
 test('Docx Email browser DOMParser sanitizer strips target styles and is byte-idempotent for default, table, and cell styles', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);

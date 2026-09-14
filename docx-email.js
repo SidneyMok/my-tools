@@ -70,7 +70,7 @@ function mergeAdjacentMarkedElements(html) {
   const sameAttributes = (left, right) => {
     const first = parseAttributes(left.open); const second = parseAttributes(right.open);
     if (first.size !== second.size) return false;
-    return [...first].every(([name, value]) => second.get(name) === value);
+    return [...first].every(([name, value]) => second.has(name) && decodeHtmlEntities(second.get(name)) === decodeHtmlEntities(value));
   };
   const canonicalOpen = (token) => {
     const attributes = parseAttributes(token.value);
@@ -179,10 +179,21 @@ function escapeAttribute(value) {
 }
 
 function decodeHtmlEntities(value) {
-  return value.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|amp|lt|gt|quot|apos|nbsp);/gi, (entity, numeric) => {
-    if (!numeric) return ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&nbsp;': '\u00a0' })[entity.toLowerCase()] || entity;
+  if (typeof globalThis.document?.createElement === 'function') {
+    const textarea = globalThis.document.createElement('textarea');
+    textarea.innerHTML = value.replace(/</g, '&lt;');
+    const decoded = textarea.value || textarea.textContent || '';
+    textarea.remove();
+    return decoded;
+  }
+  const named = {
+    amp: '&', AMP: '&', lt: '<', LT: '<', gt: '>', GT: '>', quot: '"', QUOT: '"', apos: "'", nbsp: '\u00a0',
+    copy: '©', reg: '®', colon: ':', Aacute: 'Á', aacute: 'á'
+  };
+  return value.replace(/&(?:#([xX][0-9a-fA-F]+|[0-9]+)|([A-Za-z][A-Za-z0-9]+));/g, (entity, numeric, name) => {
+    if (!numeric) return Object.prototype.hasOwnProperty.call(named, name) ? named[name] : entity;
     const codePoint = numeric[0].toLowerCase() === 'x' ? Number.parseInt(numeric.slice(1), 16) : Number.parseInt(numeric, 10);
-    return Number.isFinite(codePoint) && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+    return Number.isFinite(codePoint) && codePoint <= 0x10ffff && !(codePoint >= 0xd800 && codePoint <= 0xdfff) ? String.fromCodePoint(codePoint) : entity;
   });
 }
 
@@ -295,14 +306,14 @@ export function sanitizeEmailHtml(dirty) {
       const [, closing, rawName, source] = match; const name = rawName.toLowerCase();
       if (name === 'font') {
         if (closing) return fontStack.pop() ? '</font>' : '';
-        const attributes = parseAttributes(source); const color = attributes.get('color')?.toLowerCase();
+        const attributes = new Map([...parseAttributes(source)].map(([attribute, value]) => [attribute, decodeHtmlEntities(value)])); const color = attributes.get('color')?.toLowerCase();
         const accepted = attributes.size === 1 && /^#[0-9a-f]{6}$/.test(color || '') && !/^#0{6}$/.test(color);
         fontStack.push(accepted);
         return accepted ? `<font color="${color}">` : '';
       }
       if (!allowed.has(name) || /^(?:script|style|form|object|embed|iframe|frame|meta|link|svg|math)$/i.test(name) || name === 'span') return '';
       if (closing) return name === 'br' || name === 'img' ? '' : `</${name}>`;
-      const attributes = parseAttributes(source);
+      const attributes = new Map([...parseAttributes(source)].map(([attribute, value]) => [attribute, decodeHtmlEntities(value)]));
       const output = [];
       const styleFor = () => {
         const sanitized = sanitizeStyle(attributes.get('style') || '');

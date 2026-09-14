@@ -138,6 +138,33 @@ test('adjacent-mark normalization is byte-idempotent', () => {
   assert.equal(sanitizeEmailHtml(first), first);
 });
 
+test('fallback decodes numeric and basic attribute entities once and remains byte-idempotent', () => {
+  const savedDomParser = globalThis.DOMParser;
+  const input = '<strong title="A&amp;B">a</strong><strong title="A&#38;B">b</strong><em title="A&lt;B">c</em><em title="A&#60;B">d</em><strong title="A&gt;B">e</strong><strong title="A&#62;B">f</strong><em title="A&quot;B">g</em><em title="A&#34;B">h</em><strong title="A&apos;B">i</strong><strong title="A&#39;B">j</strong><em title="A&nbsp;B">k</em><em title="A&#xA0;B">l</em>';
+  try {
+    globalThis.DOMParser = undefined;
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, '<strong title="A&amp;B">ab</strong><em title="A&lt;B">cd</em><strong title="A&gt;B">ef</strong><em title="A&quot;B">gh</em><strong title="A\'B">ij</strong><em title="A B">kl</em>');
+    assert.equal(sanitizeEmailHtml(first), first);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
+});
+
+test('fallback rejects entity-obfuscated script URLs and retains decoded safe HTTPS URLs', () => {
+  const savedDomParser = globalThis.DOMParser;
+  const input = '<a href="jav&#x61;script:alert(1)">numeric</a><img src="javascript&colon;alert(1)"><a href="https&colon;//safe.example/path?x=1&amp;y=2">safe link</a><img src="https&colon;//safe.example/image.png?x=1&amp;y=2">';
+  try {
+    globalThis.DOMParser = undefined;
+    const first = sanitizeEmailHtml(input);
+    assert.equal(first, '<a>numeric</a><img><a href="https://safe.example/path?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">safe link</a><img src="https://safe.example/image.png?x=1&amp;y=2">');
+    assert.doesNotMatch(first, /javascript:/i);
+    assert.equal(sanitizeEmailHtml(first), first);
+  } finally {
+    globalThis.DOMParser = savedDomParser;
+  }
+});
+
 test('nested adjacent-mark normalization reaches the fixed point in one pass', () => {
   for (const [input, expected] of [
     ['<strong><em>A</em><em>B</em></strong>', '<strong><em>AB</em></strong>'],
