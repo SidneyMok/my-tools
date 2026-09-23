@@ -634,15 +634,36 @@ test('Docx Email revokes a preview Blob URL after isolated-frame load or an earl
 test('Docx Email gates preview, copy, and download after initial, failed, and cleared conversion states', async () => {
   await withPage(async ({ page, url }) => {
     await page.goto(url);
-    const controls = '#open-docx-preview, #copy-docx-html, #download-docx-html';
-    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true]);
+    const controls = '#open-docx-preview, #copy-docx-html, #copy-docx-base64, #download-docx-html';
+    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true, true]);
     await page.locator('#docx-input').setInputFiles({ name: 'legacy.doc', mimeType: 'application/msword', buffer: Buffer.from('old') });
     await page.locator('#docx-status').filter({ hasText: '無法轉換' }).waitFor();
     assert.equal(await page.locator('#docx-source').inputValue(), '');
-    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true]);
+    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true, true]);
     await uploadFixture(page);
     await page.locator('#docx-source').fill('');
-    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true]);
+    assert.deepEqual(await page.locator(controls).evaluateAll((buttons) => buttons.map((button) => button.disabled)), [true, true, true, true]);
+  });
+});
+
+test('Docx Email copies current editable HTML as UTF-8 Base64 with accessible success and failure feedback', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.goto(url);
+    const button = page.getByRole('button', { name: '複製 HTML Base64' });
+    assert.equal(await button.isDisabled(), true);
+    await uploadFixture(page);
+    assert.equal(await button.isDisabled(), false);
+    await page.locator('#docx-source').fill('<p>你好，世界！🧪</p>');
+    await button.focus();
+    await page.keyboard.press('Enter');
+    const expected = Buffer.from('<p>你好，世界！🧪</p>', 'utf8').toString('base64');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), expected);
+    assert.match(await page.locator('#docx-status').textContent(), /已複製 HTML Base64/);
+    assert.equal(Buffer.from(expected, 'base64').toString('utf8'), '<p>你好，世界！🧪</p>');
+    await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }); });
+    await button.click();
+    assert.match(await page.locator('#docx-status').textContent(), /複製 HTML Base64 失敗/);
+    assert.match(await page.locator('#docx-error').textContent(), /複製 HTML Base64 失敗/);
   });
 });
 

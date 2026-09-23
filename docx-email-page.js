@@ -15,10 +15,10 @@ const CUSTOM_STORAGE_KEY = 'docx-email-custom-variables-v1';
 const FIELD_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const builtinFields = new Set(BUILTIN_GROUPS.flatMap(({ variables }) => variables.map(({ field }) => field.toLowerCase())));
 const $ = (id) => document.getElementById(id);
-const input = $('docx-input'); const source = $('docx-source'); const status = $('docx-status'); const error = $('docx-error'); const warnings = $('docx-warnings'); const preview = $('open-docx-preview'); const copy = $('copy-docx-html'); const download = $('download-docx-html');
+const input = $('docx-input'); const source = $('docx-source'); const status = $('docx-status'); const error = $('docx-error'); const warnings = $('docx-warnings'); const preview = $('open-docx-preview'); const copy = $('copy-docx-html'); const copyBase64 = $('copy-docx-base64'); const download = $('download-docx-html');
 const search = $('variable-search'); const variableList = $('variable-list'); const customForm = $('custom-variable-form'); const customLabel = $('custom-variable-label'); const customField = $('custom-variable-field'); const customError = $('custom-variable-error'); const customList = $('custom-variable-list'); const cancelCustom = $('cancel-custom-variable'); const saveCustom = $('save-custom-variable');
 let artifact = ''; let customVariables = []; let editingField = null;
-function updateArtifactControls() { const disabled = !artifact; preview.disabled = disabled; copy.disabled = disabled; download.disabled = disabled; }
+function updateArtifactControls() { const disabled = !artifact; preview.disabled = disabled; copy.disabled = disabled; copyBase64.disabled = disabled; download.disabled = disabled; }
 function useArtifact(html) { artifact = html; source.value = artifact; updateArtifactControls(); }
 function syncSource() { artifact = source.value; updateArtifactControls(); }
 function showFailure(message) { useArtifact(''); error.textContent = message; status.textContent = '無法轉換'; warnings.textContent = ''; }
@@ -75,4 +75,5 @@ preview.addEventListener('click', () => {
   }
 });
 copy.addEventListener('click', async () => { if (!artifact) return; try { await navigator.clipboard.writeText(artifact); status.textContent = '已複製 HTML'; } catch { source.focus(); source.select(); document.execCommand('copy'); status.textContent = '已複製 HTML'; } });
+copyBase64.addEventListener('click', async () => { if (!artifact) return; const bytes = new TextEncoder().encode(source.value); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); const encoded = btoa(binary); try { await navigator.clipboard.writeText(encoded); error.textContent = ''; status.textContent = '已複製 HTML Base64'; } catch { error.textContent = '複製 HTML Base64 失敗，請檢查剪貼簿權限後重試。'; status.textContent = '複製 HTML Base64 失敗'; } });
 download.addEventListener('click', () => { if (!artifact) return; const url = URL.createObjectURL(new Blob([artifact], { type: 'text/html;charset=UTF-8' })); const link = document.createElement('a'); link.href = url; link.download = 'email-template.html'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); status.textContent = '已下載 HTML'; });
