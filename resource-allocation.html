@@ -141,15 +141,8 @@
 
 /* ---------- 2. 基础与无障碍 ---------- */
 *,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;padding:0;min-height:100%}
-body{
-  font-family:var(--f-sans);
-  font-size:var(--fs-base);
-  line-height:var(--lh-body);
-  color:var(--c-ink);
-  background:var(--c-page);
-  -webkit-text-size-adjust:100%;
-}
+html{min-height:100%}
+body{margin:0;padding:0;min-height:100%}
 h1,h2,h3,h4,p,ul,ol,figure{margin:0}
 ul,ol{padding:0;list-style:none}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -162,7 +155,7 @@ svg{display:block}
 .noscript{margin:var(--sp-6);padding:var(--sp-4);background:var(--st-gap-bg);border:1px solid var(--st-gap-bd);border-radius:var(--r-card);color:var(--st-gap-fg)}
 
 /* ---------- 3. 应用外壳 ---------- */
-.app{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100vh - 56px);height:calc(100dvh - 56px)}
+.app{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100vh - 56px);height:calc(100dvh - 56px);font-family:var(--f-sans);font-size:var(--fs-base);line-height:var(--lh-body);color:var(--c-ink);background:var(--c-page);-webkit-text-size-adjust:100%}
 /* 行高必须封顶：隐式 auto 行会被内容撑开，导致整页滚动而不是面板内滚动 */
 .app-body{display:grid;grid-template-columns:minmax(0,1fr) var(--people-w);grid-template-rows:minmax(0,1fr);min-height:0}
 .app[data-people="collapsed"] .app-body{grid-template-columns:minmax(0,1fr) var(--people-w-collapsed)}
@@ -170,10 +163,9 @@ svg{display:block}
 
 .app-bar{display:flex;align-items:center;gap:var(--sp-4);flex-wrap:wrap;padding:var(--sp-3) var(--pad-x);background:var(--c-surface);border-bottom:1px solid var(--c-line);box-shadow:var(--sh-raised);position:relative;z-index:10}
 .bar-brand{flex:none;min-width:0}
-.brand-mark{display:grid;place-items:center;width:38px;height:38px;flex:none;border-radius:10px;background:var(--c-accent);color:#fff}
 .bar-brand-text{min-width:0}
-.brand-name{display:block;font-size:var(--fs-md);font-weight:700;letter-spacing:-.01em;line-height:var(--lh-tight);white-space:nowrap}
-.brand-sub{display:block;font-size:var(--fs-micro);color:var(--c-ink-3);line-height:var(--lh-tight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-brand-name{display:block;font-size:var(--fs-md);font-weight:700;letter-spacing:-.01em;line-height:var(--lh-tight);white-space:nowrap}
+.app-brand-sub{display:block;font-size:var(--fs-micro);color:var(--c-ink-3);line-height:var(--lh-tight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar-stats{margin-inline-start:auto;flex-wrap:wrap}
 .bar-actions{flex:none}
 /* 显式收紧数字与标题的行距，覆盖从 .bar-stats 继承下来的大 --od-gap */
@@ -506,7 +498,7 @@ select.control{cursor:pointer}
 }
 @media (max-width:767px){
   :root{--pad-x:var(--sp-4);--toast-bottom:var(--sp-4)}
-  .brand-sub{display:none}
+  .app-brand-sub{display:none}
   .head-tools{width:100%;margin-inline-start:0}
   .field-inline{flex:1 1 150px}
   .field-wrap{flex:1 1 auto}
@@ -580,12 +572,9 @@ select.control{cursor:pointer}
 
   <header class="app-bar">
     <div class="bar-brand od-row">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
-      </span>
       <span class="od-stack bar-brand-text" style="--od-gap:0">
-        <span class="brand-name">资源编排台</span>
-        <span class="brand-sub">项目 × 人员 · 数据保存在本机浏览器</span>
+        <span class="app-brand-name">资源编排台</span>
+        <span class="app-brand-sub">项目 × 人员 · 数据保存在本机浏览器</span>
       </span>
     </div>
 

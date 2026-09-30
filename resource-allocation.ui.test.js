@@ -266,3 +266,64 @@ test('Resource Allocation uses the shared navigation contract without toolbox-na
     assert.deepEqual(navigation.filter((link) => link.active || link.current === 'page'), [{ href: 'resource-allocation.html', active: true, current: 'page' }]);
   });
 });
+
+test('Resource Allocation isolates app branding and matches the shared header at desktop and mobile', async () => {
+  const source = await readFile(path.join(root, 'resource-allocation.html'), 'utf8');
+  const inlineStyles = [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((match) => match[1]).join('\n');
+  assert.doesNotMatch(inlineStyles, /\.brand-mark\b/, 'inline app CSS cannot style the shared brand mark');
+  assert.doesNotMatch(inlineStyles, /(^|[,{]\s*)(?:nav|nav\s+a|\.brand(?:\b|[.#:[\s]))/m, 'inline app CSS has no global navigation or brand selector');
+  assert.doesNotMatch(source, /class="brand-mark"[^>]*>[\s\S]*?<\/span>\s*<span class="od-stack bar-brand-text"/, 'app shell has no internal brand icon');
+
+  await withPage(async ({ page, url }) => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      const headers = {};
+      for (const filename of ['timestamp.html', 'resource-allocation.html']) {
+        await page.goto(url + '/' + filename, { waitUntil: 'networkidle' });
+        headers[filename] = await page.evaluate(() => {
+          const rect = (selector) => {
+            const { x, y, width, height, right, bottom } = document.querySelector(selector).getBoundingClientRect();
+            return { x, y, width, height, right, bottom };
+          };
+          const style = (selector) => {
+            const computed = getComputedStyle(document.querySelector(selector));
+            return {
+              fontFamily: computed.fontFamily,
+              fontSize: computed.fontSize,
+              fontWeight: computed.fontWeight,
+              color: computed.color,
+              backgroundColor: computed.backgroundColor,
+              gap: computed.gap,
+              padding: computed.padding,
+              display: computed.display,
+              borderBottom: computed.borderBottom
+            };
+          };
+          return {
+            viewport: innerWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+            header: rect('.site-header'),
+            brand: rect('.site-header .brand'),
+            mark: rect('.site-header .brand-mark'),
+            nav: rect('.site-header nav'),
+            firstLink: rect('.site-header nav a'),
+            headerStyle: style('.site-header'),
+            brandStyle: style('.site-header .brand'),
+            markStyle: style('.site-header .brand-mark'),
+            navStyle: style('.site-header nav'),
+            linkStyle: style('.site-header nav a'),
+            activeLinkStyle: style('.site-header nav a.active')
+          };
+        });
+      }
+      const reference = headers['timestamp.html'];
+      const candidate = headers['resource-allocation.html'];
+      for (const key of ['header', 'brand', 'mark', 'nav', 'firstLink', 'headerStyle', 'brandStyle', 'markStyle', 'navStyle', 'linkStyle', 'activeLinkStyle']) {
+        assert.deepEqual(candidate[key], reference[key], viewport.width + ': shared header ' + key);
+      }
+      assert.equal(candidate.scrollWidth, viewport.width, viewport.width + ': no horizontal overflow');
+      await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
+      assert.equal(await page.locator('.app-bar .brand-mark').count(), 0, 'no internal app-shell brand icon');
+    }
+  });
+});
