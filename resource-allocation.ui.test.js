@@ -128,11 +128,36 @@ test('Resource Allocation stays contained at desktop and mobile viewports', asyn
       const geometry = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth, width: innerWidth,
         app: document.querySelector('#app').getBoundingClientRect().toJSON(),
+        header: document.querySelector('.site-header').getBoundingClientRect().toJSON(),
         nav: document.querySelector('.site-header nav').getBoundingClientRect().toJSON()
       }));
       assert.equal(geometry.scrollWidth, viewport.width, viewport.width + ': no horizontal overflow');
       assert.ok(geometry.app.left >= 0 && geometry.app.right <= viewport.width, viewport.width + ': app contained');
       assert.ok(geometry.nav.left >= 0 && geometry.nav.right <= viewport.width, viewport.width + ': nav contained');
+      assert.ok(geometry.app.top >= geometry.header.bottom, viewport.width + ': app starts below header');
+    }
+  });
+});
+
+test('shared mobile navigation keeps every link inside the header and hit-testable', async () => {
+  await withPage(async ({ page, url }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
+    const links = await page.locator('.site-header nav a').evaluateAll((anchors) => anchors.map((anchor) => {
+      const rect = anchor.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return {
+        label: anchor.textContent.trim(),
+        withinHeader: rect.top >= anchor.closest('.site-header').getBoundingClientRect().top &&
+          rect.bottom <= anchor.closest('.site-header').getBoundingClientRect().bottom,
+        hitAnchor: hit === anchor || anchor.contains(hit)
+      };
+    }));
+
+    assert.equal(links.length, 8);
+    for (const link of links) {
+      assert.equal(link.withinHeader, true, link.label + ': link box is inside header');
+      assert.equal(link.hitAnchor, true, link.label + ': link center hit-tests its anchor');
     }
   });
 });
