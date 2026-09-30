@@ -46,9 +46,10 @@ test('shared top navigation keeps Password tab semantics on every tool page', as
         { href: 'network.html', label: 'Network' },
         { href: 'docx-email.html', label: 'Docx Email' },
         { href: 'text-encode.html', label: 'Text & Encode' },
-        { href: 'password-generator.html', label: 'Password' }
+        { href: 'password-generator.html', label: 'Password' },
+        { href: 'resource-allocation.html', label: 'Resource Allocation' }
       ], `${name} navigation labels, hrefs, and order`);
-      const password = navigation.at(-1);
+      const password = navigation.find((link) => link.href === 'password-generator.html');
       assert.deepEqual(password, {
         href: 'password-generator.html',
         label: 'Password',
