@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="description" content="资源编排台：纯前端的团队项目与人员资源编排管理工具，数据保存在本地浏览器。">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
 <title>资源编排台 · 团队项目与人员编排</title>
 <style>
 /* OD-LAYOUT-PRIMITIVES v1 — structure only: display, flex/grid, overflow, wrapping, ratio.
@@ -160,7 +162,7 @@ svg{display:block}
 .noscript{margin:var(--sp-6);padding:var(--sp-4);background:var(--st-gap-bg);border:1px solid var(--st-gap-bd);border-radius:var(--r-card);color:var(--st-gap-fg)}
 
 /* ---------- 3. 应用外壳 ---------- */
-.app{display:grid;grid-template-rows:auto minmax(0,1fr);height:100vh;height:100dvh}
+.app{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100vh - 56px);height:calc(100dvh - 56px)}
 /* 行高必须封顶：隐式 auto 行会被内容撑开，导致整页滚动而不是面板内滚动 */
 .app-body{display:grid;grid-template-columns:minmax(0,1fr) var(--people-w);grid-template-rows:minmax(0,1fr);min-height:0}
 .app[data-people="collapsed"] .app-body{grid-template-columns:minmax(0,1fr) var(--people-w-collapsed)}
@@ -556,24 +558,22 @@ select.control{cursor:pointer}
 .hint-bar{position:sticky;top:0;z-index:4}
 .detail-head .dlg-sub{white-space:nowrap}
 </style>
-<style>
-.toolbox-nav{display:flex;align-items:center;gap:24px;min-height:52px;padding:0 24px;background:#fff;border-bottom:1px solid #dce1e8;overflow-x:auto;white-space:nowrap}
-.toolbox-nav a{display:grid;place-items:center;align-self:stretch;border-bottom:2px solid transparent;color:#626d7b;font-size:13px;font-weight:600;text-decoration:none}
-.toolbox-nav a:hover,.toolbox-nav a.active{color:#0e5e6f;border-bottom-color:#0e5e6f}
-@media (max-width:767px){.toolbox-nav{gap:16px;padding:0 16px}.toolbox-nav a{font-size:12px}}
-</style>
 </head>
 <body>
-<nav class="toolbox-nav" aria-label="工具導覽">
-  <a href="index.html">JSON</a>
-  <a href="html-preview.html">HTML</a>
-  <a href="timestamp.html">Timestamp</a>
-  <a href="network.html">Network</a>
-  <a href="docx-email.html">Docx Email</a>
-  <a href="text-encode.html">Text &amp; Encode</a>
-  <a href="password-generator.html">Password</a>
-  <a class="active" href="resource-allocation.html" aria-current="page">Resource Allocation</a>
-</nav>
+<header class="site-header">
+  <a class="brand" href="index.html"><span class="brand-mark">&lt;/&gt;</span><span>工具箱</span></a>
+  <nav aria-label="工具導覽">
+    <a href="index.html">JSON</a>
+    <a href="html-preview.html">HTML</a>
+    <a href="timestamp.html">Timestamp</a>
+    <a href="network.html">Network</a>
+    <a href="docx-email.html">Docx Email</a>
+    <a href="text-encode.html">Text &amp; Encode</a>
+    <a href="password-generator.html">Password</a>
+    <a class="active" href="resource-allocation.html" aria-current="page">Resource Allocation</a>
+  </nav>
+  <span class="local-note"><i></i>本機運行</span>
+</header>
 <div class="app" id="app" data-people="expanded">
   <a class="skip-link" href="#projects-body">跳到项目区</a>
   <a class="skip-link" href="#people-body">跳到人员区</a>
@@ -961,15 +961,15 @@ function statusIconName(status) {
   return status === 'gap' ? 'stGap' : (status === 'over' ? 'stOver' : (status === 'full' ? 'stFull' : 'stNone'));
 }
 
-function personProjectIds(personId) {
-  var seen = {}, out = [];
+function personAssignmentLoad(personId) {
+  var count = 0;
   state.projects.forEach(function (p) {
     var list = p.assignments || [];
     for (var i = 0; i < list.length; i++) {
-      if (list[i].personId === personId && !seen[p.id]) { seen[p.id] = true; out.push(p.id); break; }
+      if (list[i].personId === personId) { count++; }
     }
   });
-  return out;
+  return count;
 }
 
 function personAssignments(personId) {
@@ -1004,7 +1004,7 @@ function allRoles() {
 function boardSummary() {
   var gap = 0, over = 0, loaded = 0;
   state.projects.forEach(function (p) { var s = projectStats(p); gap += s.gap; over += s.over; });
-  state.people.forEach(function (pe) { if (personProjectIds(pe.id).length >= 4) loaded++; });
+  state.people.forEach(function (pe) { if (personAssignmentLoad(pe.id) >= 4) loaded++; });
   return { projects: state.projects.length, people: state.people.length, gap: gap, over: over, loaded: loaded };
 }
 /* ---------- E. 渲染 ---------- */
@@ -1174,7 +1174,7 @@ function afterProjectRender(matched, shownCount, token) {
 function chipHTML(personId, roleName, project, reqId) {
   var pe = personById(personId);
   if (!pe) return '';
-  var n = personProjectIds(personId).length;
+  var n = personAssignmentLoad(personId);
   var k = loadKey(n);
   return '<span class="chip" data-load="' + k + '" data-person-id="' + personId + '" title="' + esc(pe.name) + ' · ' + esc(pe.role) + ' · ' + esc(loadLabel(n)) + '">' +
     '<span class="chip-dot" aria-hidden="true"></span>' +
@@ -1265,7 +1265,7 @@ function visiblePeople() {
     if (q && p.name.toLowerCase().indexOf(q) === -1) return false;
     if (role !== 'all' && p.role !== role) return false;
     return true;
-  }).map(function (p) { return { p: p, n: personProjectIds(p.id).length }; });
+  }).map(function (p) { return { p: p, n: personAssignmentLoad(p.id) }; });
   var sort = ui.personSort;
   var byName = function (a, b) { return a.p.name.localeCompare(b.p.name, 'zh-Hans-CN'); };
   list.sort(function (a, b) {
@@ -1356,6 +1356,7 @@ function renderHint() {
   el.selectHint.hidden = false;
   el.selectHint.innerHTML = icon('target') +
     '<span>已选中 <strong>' + esc(p.name) + '</strong>（' + esc(p.role) + '）。点击任意项目里的岗位区域即可完成分配。</span>' +
+    loadBadgeHTML(personAssignmentLoad(p.id)) +
     '<span class="foot-spacer"></span>' +
     '<button type="button" class="btn btn-secondary btn-sm" data-action="assign" data-person-id="' + p.id + '">选择项目岗位…</button>' +
     '<button type="button" class="btn btn-ghost btn-sm" data-action="clear-select" data-focus-key="clearselect">取消选择</button>';
@@ -1842,7 +1843,7 @@ function assignDialog(personId) {
     if (!state.projects.length) {
       return '<p class="dlg-text">还没有任何项目。先创建一个项目，才能把人员分配进去。</p>';
     }
-    var n = personProjectIds(personId).length;
+    var n = personAssignmentLoad(personId);
     var h = '<div class="detail-head">' + loadBadgeHTML(n) + '<span class="dlg-sub">点击一个岗位即可完成分配。</span></div>';
     var any = false;
     h += '<div class="pick-list">';
@@ -1890,7 +1891,7 @@ function pickPersonDialog(projectId, reqId) {
   if (!r) { return; }
   function bodyHTML() {
     if (!state.people.length) { return '<p class="dlg-text">还没有人员。先添加团队成员，再回来分配这个岗位。</p>'; }
-    var list = state.people.map(function (pe) { return { p: pe, n: personProjectIds(pe.id).length }; });
+    var list = state.people.map(function (pe) { return { p: pe, n: personAssignmentLoad(pe.id) }; });
     list.sort(function (a, b) {
       return (a.n - b.n) || a.p.role.localeCompare(b.p.role, 'zh-Hans-CN') || a.p.name.localeCompare(b.p.name, 'zh-Hans-CN');
     });
@@ -1931,9 +1932,9 @@ function personDetailDialog(personId) {
     var pe = personById(personId);
     if (!pe) { return '<p class="dlg-text">该人员已被删除。</p>'; }
     var items = personAssignments(personId);
-    var n = personProjectIds(personId).length;
+    var n = personAssignmentLoad(personId);
     var h = '<div class="detail-head"><span class="detail-name">' + esc(pe.name) + '</span>' + loadBadgeHTML(n) + '<span class="dlg-sub">' + esc(pe.role) + '</span></div>';
-    h += '<p class="section-label">所在项目与岗位 · 共 ' + items.length + ' 条分配，涉及 ' + n + ' 个项目</p>';
+    h += '<p class="section-label">所在项目与岗位 · 共 ' + items.length + ' 条分配，负载 ' + n + ' 项</p>';
     if (!items.length) {
       h += '<p class="dlg-note">' + icon('info') + '<span>目前还没有参与任何项目，属于空闲状态。可以从下方人员区把他拖到项目岗位，或用「分配到岗位」按钮。</span></p>';
     } else {
@@ -2025,12 +2026,12 @@ function legendDialog() {
     }).join('') + '</div><div class="dlg-list">' +
     proj.map(function (x) { return '<p class="dlg-sub">' + esc(x.label) + ' — ' + esc(x.desc) + '</p>'; }).join('') +
     '</div></div>';
-  h += '<div class="legend-group"><p class="legend-title">人员卡片颜色 · 按同时参与的项目数</p><div class="legend-items">' +
+  h += '<div class="legend-group"><p class="legend-title">人员卡片颜色 · 按分配记录数</p><div class="legend-items">' +
     load.map(function (x) {
       return '<span class="legend-item" style="--lg-fg:var(--ld-' + x.k + '-fg);--lg-bg:var(--ld-' + x.k + '-bg);--lg-bd:var(--ld-' + x.k + '-bd)">' + icon('ld' + x.k) + '<span>' + esc(x.label) + '</span></span>';
     }).join('') + '</div><div class="dlg-list">' +
-    '<p class="dlg-sub">负载只统计「参与了几个项目」，同一项目里占多个岗位仍按 1 个项目计。</p>' +
-    '<p class="dlg-sub">超过 3 个项目即视为超载，建议先给这些成员减负再派新活。</p>' +
+    '<p class="dlg-sub">负载统计所有项目里的分配记录，同一项目里占多个岗位会分别计数。</p>' +
+    '<p class="dlg-sub">超过 3 条分配即视为超载，建议先给这些成员减负再派新活。</p>' +
     '</div></div>';
   h += '<p class="legend-note">颜色之外，每个状态都同时带有文字与图形，不依赖颜色单独传达信息。</p>';
   h += '</div>';
@@ -2058,7 +2059,7 @@ function assignPerson(projectId, reqId, personId) {
   ui.selectedPersonId = null;
   save();
   var st = projectStats(p);
-  var n = personProjectIds(personId).length;
+  var n = personAssignmentLoad(personId);
   ui.flashProjectId = null;
   render();
   toast('success', '已把 ' + pe.name + ' 排进 ' + r.role + ' 岗位',
@@ -2080,7 +2081,7 @@ function unassignPerson(projectId, reqId, personId) {
   save();
   var r = reqId ? reqById(p, reqId) : null;
   var st = projectStats(p);
-  var n = personProjectIds(personId).length;
+  var n = personAssignmentLoad(personId);
   render();
   toast('info', '已把 ' + pe.name + ' 移出',
     '「' + p.name + '」' + (r ? ('的 ' + r.role + ' 岗位') : '') + '，项目现在' + projectStatusLabel(st) + '；' + pe.name + ' ' + loadLabel(n) + '。');
@@ -2145,14 +2146,14 @@ function deletePerson(personId) {
   var pe = personById(personId);
   if (!pe) { return; }
   var items = personAssignments(personId);
-  var n = personProjectIds(personId).length;
+  var n = personAssignmentLoad(personId);
   var name = pe.name;
   confirmDialog({
     title: '删除人员',
     subtitle: name + ' · ' + pe.role,
     message: '确定要删除「' + name + '」吗？',
     detail: items.length > 0
-      ? (name + ' 当前在 ' + n + ' 个项目里有 ' + items.length + ' 条分配，删除后这些岗位会立刻出现缺口。此操作无法撤销。')
+      ? (name + ' 当前有 ' + n + ' 条分配，删除后这些岗位会立刻出现缺口。此操作无法撤销。')
       : (name + ' 目前没有参与任何项目。此操作无法撤销。'),
     confirmLabel: '删除人员',
     danger: true,
