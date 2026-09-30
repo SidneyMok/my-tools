@@ -561,6 +561,8 @@ select.control{cursor:pointer}
 .toolbox-nav a{display:grid;place-items:center;align-self:stretch;border-bottom:2px solid transparent;color:#626d7b;font-size:13px;font-weight:600;text-decoration:none}
 .toolbox-nav a:hover,.toolbox-nav a.active{color:#0e5e6f;border-bottom-color:#0e5e6f}
 @media (max-width:767px){.toolbox-nav{gap:16px;padding:0 16px}.toolbox-nav a{font-size:12px}}
+/* Hosting integration: the shared navigation occupies 52px above the supplied app shell. */
+.app{height:calc(100vh - 52px);height:calc(100dvh - 52px)}
 </style>
 </head>
 <body>

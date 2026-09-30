@@ -99,6 +99,10 @@ test('Resource Allocation stays contained at desktop and mobile viewports', asyn
       assert.equal(geometry.scrollWidth, viewport.width, viewport.width + ': no horizontal overflow');
       assert.ok(geometry.app.left >= 0 && geometry.app.right <= viewport.width, viewport.width + ': app contained');
       assert.ok(geometry.nav.left >= 0 && geometry.nav.right <= viewport.width, viewport.width + ': nav contained');
+      assert.equal(Math.round(geometry.app.top), Math.round(geometry.nav.bottom), viewport.width + ': app starts below navigation');
+      if (viewport.width >= 768) {
+        assert.equal(Math.round(geometry.app.height), viewport.height - Math.round(geometry.nav.height), viewport.width + ': app fits below navigation');
+      }
     }
   });
 });
