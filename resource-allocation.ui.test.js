@@ -270,7 +270,9 @@ test('Resource Allocation uses the shared navigation contract without toolbox-na
 test('Resource Allocation isolates app branding and matches the shared header at desktop and mobile', async () => {
   const source = await readFile(path.join(root, 'resource-allocation.html'), 'utf8');
   const inlineStyles = [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((match) => match[1]).join('\n');
-  assert.doesNotMatch(inlineStyles, /\.brand-mark\b/, 'inline app CSS cannot style the shared brand mark');
+  assert.match(inlineStyles, /\.site-header\s*>\s*\.brand\s*\{/);
+  assert.match(inlineStyles, /\.site-header\s*>\s*\.brand\s*>\s*\.brand-mark\s*\{/);
+  assert.doesNotMatch(inlineStyles, /(^|[,}\n])\s*\.brand-mark\s*\{/m, 'inline app CSS cannot use an unscoped brand mark selector');
   assert.doesNotMatch(inlineStyles, /(^|[,{]\s*)(?:nav|nav\s+a|\.brand(?:\b|[.#:[\s]))/m, 'inline app CSS has no global navigation or brand selector');
   assert.doesNotMatch(source, /class="brand-mark"[^>]*>[\s\S]*?<\/span>\s*<span class="od-stack bar-brand-text"/, 'app shell has no internal brand icon');
 
@@ -289,8 +291,11 @@ test('Resource Allocation isolates app branding and matches the shared header at
             const computed = getComputedStyle(document.querySelector(selector));
             return {
               fontFamily: computed.fontFamily,
+              font: computed.font,
               fontSize: computed.fontSize,
               fontWeight: computed.fontWeight,
+              lineHeight: computed.lineHeight,
+              letterSpacing: computed.letterSpacing,
               color: computed.color,
               backgroundColor: computed.backgroundColor,
               gap: computed.gap,
@@ -305,8 +310,13 @@ test('Resource Allocation isolates app branding and matches the shared header at
             header: rect('.site-header'),
             brand: rect('.site-header .brand'),
             mark: rect('.site-header .brand-mark'),
+            wordmark: rect('.site-header .brand > span:last-child'),
             nav: rect('.site-header nav'),
-            firstLink: rect('.site-header nav a'),
+            links: [...document.querySelectorAll('.site-header nav a')].map((link) => {
+              const { x, y, width, height, right, bottom } = link.getBoundingClientRect();
+              const computed = getComputedStyle(link);
+              return { href: link.getAttribute('href'), x, y, width, height, right, bottom };
+            }),
             headerStyle: style('.site-header'),
             brandStyle: style('.site-header .brand'),
             markStyle: style('.site-header .brand-mark'),
@@ -318,9 +328,16 @@ test('Resource Allocation isolates app branding and matches the shared header at
       }
       const reference = headers['timestamp.html'];
       const candidate = headers['resource-allocation.html'];
-      for (const key of ['header', 'brand', 'mark', 'nav', 'firstLink', 'headerStyle', 'brandStyle', 'markStyle', 'navStyle', 'linkStyle', 'activeLinkStyle']) {
+      for (const key of ['header', 'brand', 'mark', 'wordmark', 'nav', 'headerStyle', 'brandStyle', 'markStyle', 'navStyle', 'linkStyle', 'activeLinkStyle']) {
         assert.deepEqual(candidate[key], reference[key], viewport.width + ': shared header ' + key);
       }
+      assert.deepEqual(candidate.links.map(({ href }) => href), reference.links.map(({ href }) => href), viewport.width + ': nav order');
+      for (const referenceLink of reference.links.filter((link) => !link.active)) {
+        const candidateLink = candidate.links.find(({ href }) => href === referenceLink.href);
+        assert.deepEqual(candidateLink, referenceLink, viewport.width + ': nav geometry ' + referenceLink.href);
+      }
+      assert.equal(candidate.links.filter((link) => link.href === 'resource-allocation.html').length, 1, viewport.width + ': Resource Allocation link');
+      assert.equal(candidate.activeLinkStyle.borderBottom, reference.activeLinkStyle.borderBottom, viewport.width + ': active underline');
       assert.equal(candidate.scrollWidth, viewport.width, viewport.width + ': no horizontal overflow');
       await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
       assert.equal(await page.locator('.app-bar .brand-mark').count(), 0, 'no internal app-shell brand icon');
