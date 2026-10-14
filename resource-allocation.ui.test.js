@@ -243,21 +243,53 @@ test('Resource Allocation renders every person and keeps all four sort modes wit
 
   await withPage(async ({ page, url }) => {
     const state = boardState(['p-alice', 'p-alice', 'p-bob']);
-    state.people.push({ id: 'p-delta', name: 'Zed', role: '运维' });
+    state.people.push({ id: 'p-delta', name: 'Zed', role: '测试' });
     state.people.push({ id: 'p-echo', name: 'Aaron', role: '设计' });
     await loadBoard(page, state);
     await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
     assert.equal(await page.locator('#personQuery').count(), 0);
     assert.equal(await page.locator('#personRoleFilter').count(), 0);
+    assert.deepEqual(await page.locator('#personSort option').evaluateAll((options) => options.map((option) => option.value)), ['load-desc', 'load-asc', 'role', 'name']);
+    assert.equal(await page.locator('#personSort').inputValue(), 'load-desc');
     assert.equal(await page.locator('#roster .person-card').count(), state.people.length);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
     assert.deepEqual(await rosterOrder(page), ['p-alice', 'p-bob', 'p-echo', 'p-cara', 'p-delta']);
 
     await page.locator('#personSort').selectOption('load-asc');
     assert.deepEqual(await rosterOrder(page), ['p-echo', 'p-cara', 'p-delta', 'p-bob', 'p-alice']);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
     await page.locator('#personSort').selectOption('role');
-    assert.deepEqual(await rosterOrder(page), ['p-bob', 'p-cara', 'p-alice', 'p-echo', 'p-delta']);
+    assert.deepEqual(await rosterOrder(page), ['p-bob', 'p-delta', 'p-cara', 'p-alice', 'p-echo']);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
     await page.locator('#personSort').selectOption('name');
     assert.deepEqual(await rosterOrder(page), ['p-echo', 'p-alice', 'p-bob', 'p-cara', 'p-delta']);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
+
+    const beforeCollapse = await page.evaluate(() => ({
+      people: [...document.querySelectorAll('#roster .person-card')].map((card) => card.dataset.personId),
+      count: document.querySelector('#peopleCount').textContent,
+      rail: document.querySelector('.region-people').getBoundingClientRect().toJSON()
+    }));
+    await page.locator('#btnTogglePeople').click();
+    assert.equal(await page.locator('#app').getAttribute('data-people'), 'collapsed');
+    assert.equal(await page.locator('#btnTogglePeople').getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#people-body').isHidden(), true);
+    assert.equal(await page.locator('#roster').isHidden(), true);
+    const collapsedRail = await page.locator('.region-people').evaluate((people) => ({
+      visible: getComputedStyle(people).display !== 'none',
+      rect: people.getBoundingClientRect().toJSON()
+    }));
+    assert.equal(collapsedRail.visible, true);
+    assert.equal(collapsedRail.rect.width, 56);
+    assert.equal(collapsedRail.rect.height, beforeCollapse.rail.height);
+
+    await page.locator('#btnTogglePeople').click();
+    assert.equal(await page.locator('#app').getAttribute('data-people'), 'expanded');
+    assert.equal(await page.locator('#btnTogglePeople').getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('#roster').isHidden(), false);
+    assert.deepEqual(await rosterOrder(page), beforeCollapse.people);
+    assert.equal(await page.locator('#peopleCount').textContent(), beforeCollapse.count);
+    assert.equal(await page.locator('#personSort').inputValue(), 'name');
   });
 });
 
