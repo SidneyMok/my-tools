@@ -297,7 +297,7 @@ test('Resource Allocation gives the roster released header space and preserves t
   await withPage(async ({ page, url }) => {
     const baseline = {
       desktop: { peopleTop: 122.890625, rosterTop: 381.0625, rosterHeight: 518.9375 },
-      mobile: { peopleTop: 2724.03125, rosterTop: 2872.03125 }
+      mobile: { peopleTop: 2724.03125, rosterTop: 2872.03125, rosterHeight: 300 }
     };
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
       await page.setViewportSize(viewport);
@@ -311,7 +311,7 @@ test('Resource Allocation gives the roster released header space and preserves t
       const expected = viewport.width === 1440 ? baseline.desktop : baseline.mobile;
       assert.ok(geometry.peopleTop <= expected.peopleTop, viewport.width + ': people panel moved up or stayed put');
       assert.ok(geometry.rosterTop < expected.rosterTop, viewport.width + ': roster starts above baseline');
-      if (viewport.width === 1440) assert.ok(geometry.rosterHeight > expected.rosterHeight, 'desktop roster is taller than baseline');
+      assert.ok(geometry.rosterHeight > expected.rosterHeight, viewport.width + ': roster is taller than baseline');
       assert.equal(geometry.scrollWidth, viewport.width, viewport.width + ': no horizontal overflow');
     }
 
