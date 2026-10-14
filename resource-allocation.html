@@ -325,15 +325,11 @@ body.has-selection .rr-zone.is-bad{border-color:var(--c-line-strong);background:
 
 /* ---------- 5. 人员区（右侧栏） ---------- */
 .region-people{position:relative;z-index:5;background:var(--c-surface);border-inline-start:1px solid var(--c-line-strong);overflow:hidden}
-/* flex:none：头部是固定 chrome，永远不参与收缩，否则筛选控件会被列表盖住 */
+/* flex:none：头部是固定 chrome，永远不参与收缩，否则排序控件会被列表盖住 */
 .region-people .region-head{flex:none;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:var(--sp-2);padding:var(--sp-3);background:var(--c-surface);border-bottom:1px solid var(--c-line)}
 .region-top{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
 .region-people .region-title{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.region-people .head-tools{margin-inline-start:0;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:var(--sp-2)}
-.region-people .field-inline{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;width:100%}
-.region-people .field-wrap{width:100%}
-.region-people .field-wrap input[type="search"]{width:100%}
-.region-people .field-inline select{width:100%;max-width:none}
+.region-people .head-tools{margin-inline-start:0;align-items:stretch;flex-wrap:nowrap;gap:var(--sp-2)}
 .btn-toggle-people{margin-inline-start:auto;flex:none}
 .btn-toggle-people .btn-ic svg{transition:transform var(--dur-fast) var(--ease-out)}
 .app[data-people="collapsed"] .btn-toggle-people .btn-ic svg{transform:rotate(180deg)}
@@ -483,9 +479,6 @@ select.control{cursor:pointer}
   .region-people .region-head{flex-direction:row;align-items:center;flex-wrap:wrap;gap:var(--sp-3);min-height:52px;padding:var(--sp-3) var(--pad-x)}
   .region-people .region-top{flex:1 1 auto}
   .region-people .head-tools{flex-direction:row;flex-wrap:wrap;width:100%}
-  .region-people .field-inline{display:inline-flex;align-items:center;gap:var(--sp-2);flex:1 1 150px;width:auto}
-  .region-people .field-wrap{flex:1 1 auto;width:auto}
-  .region-people .field-inline select{width:auto;flex:1 1 auto}
   .region-people .region-body{overflow:hidden;max-height:340px;padding:0}
   .roster{grid-template-columns:repeat(auto-fill,minmax(min(176px,100%),1fr));padding:var(--sp-3) var(--pad-x)}
   .app[data-people="collapsed"] .region-people .region-head{flex:0 0 auto;align-items:center;justify-content:flex-start;gap:var(--sp-3);min-height:52px;padding:var(--sp-3) var(--pad-x);border-bottom:1px solid var(--c-line)}
@@ -504,7 +497,7 @@ select.control{cursor:pointer}
   .field-wrap{flex:1 1 auto}
   .field-wrap input[type="search"]{width:100%;min-width:0}
   .field-inline select{max-width:none;width:100%;flex:1 1 auto}
-  .region-people .region-body{max-height:300px}
+  .region-people .region-body{max-height:calc(300px + 42px)}
   .toast-root{inset-inline:var(--sp-4);margin-inline:0;width:auto;align-items:stretch}
   .dlg-head{padding:var(--sp-4)}
   .dlg-body{padding:var(--sp-4)}
@@ -649,17 +642,6 @@ select.control{cursor:pointer}
       <span class="people-rail-label" aria-hidden="true">人员</span>
       <div class="head-tools">
         <label class="field-inline">
-          <span class="field-label">搜索姓名</span>
-          <span class="field-wrap">
-            <span class="field-ic" aria-hidden="true"></span>
-            <input type="search" id="personQuery" placeholder="按姓名筛选" autocomplete="off">
-          </span>
-        </label>
-        <label class="field-inline">
-          <span class="field-label">岗位</span>
-          <select id="personRoleFilter"></select>
-        </label>
-        <label class="field-inline">
           <span class="field-label">排序</span>
           <select id="personSort">
             <option value="load-desc">负载从高到低</option>
@@ -796,8 +778,6 @@ var ui = {
   peopleCollapsed: false,
   projectQuery: '',
   projectStatus: 'all',
-  personQuery: '',
-  personRole: 'all',
   personSort: 'load-desc',
   flashProjectId: null,
   flashPersonId: null,
@@ -1023,8 +1003,6 @@ function bindEls() {
   el.liveRegion = $('#liveRegion');
   el.projectQuery = $('#projectQuery');
   el.projectStatusFilter = $('#projectStatusFilter');
-  el.personQuery = $('#personQuery');
-  el.personRoleFilter = $('#personRoleFilter');
   el.personSort = $('#personSort');
   el.roleList = $('#roleList');
   el.togglePeople = $('#btnTogglePeople');
@@ -1253,13 +1231,7 @@ function projectCardHTML(p, flashId) {
 }
 
 function visiblePeople() {
-  var q = ui.personQuery.trim().toLowerCase();
-  var role = ui.personRole;
-  var list = state.people.filter(function (p) {
-    if (q && p.name.toLowerCase().indexOf(q) === -1) return false;
-    if (role !== 'all' && p.role !== role) return false;
-    return true;
-  }).map(function (p) { return { p: p, n: personAssignmentLoad(p.id) }; });
+  var list = state.people.map(function (p) { return { p: p, n: personAssignmentLoad(p.id) }; });
   var sort = ui.personSort;
   var byName = function (a, b) { return a.p.name.localeCompare(b.p.name, 'zh-Hans-CN'); };
   list.sort(function (a, b) {
@@ -1291,18 +1263,6 @@ function personCardHTML(item, flashId) {
   return h;
 }
 
-function refreshRoleFilter() {
-  var roles = allRoles();
-  if (ui.personRole !== 'all' && roles.indexOf(ui.personRole) === -1) { ui.personRole = 'all'; }
-  var html = '<option value="all">全部岗位</option>' + roles.map(function (r) {
-    return '<option value="' + esc(r) + '"' + (r === ui.personRole ? ' selected' : '') + '>' + esc(r) + '</option>';
-  }).join('');
-  if (el.personRoleFilter.getAttribute('data-sig') !== html) {
-    el.personRoleFilter.innerHTML = html;
-    el.personRoleFilter.setAttribute('data-sig', html);
-  }
-}
-
 function refreshRoleList() {
   var html = allRoles().map(function (r) { return '<option value="' + esc(r) + '"></option>'; }).join('');
   if (el.roleList.getAttribute('data-sig') !== html) {
@@ -1314,10 +1274,9 @@ function refreshRoleList() {
 function renderRoster() {
   var flash = ui.flashPersonId; ui.flashPersonId = null;
   var total = state.people.length;
-  refreshRoleFilter();
   refreshRoleList();
   var list = visiblePeople();
-  el.peopleCount.textContent = total + ' 人' + (list.length !== total ? '（筛出 ' + list.length + '）' : '');
+  el.peopleCount.textContent = total + ' 人';
   if (list.length === 0) {
     el.roster.innerHTML = '';
     el.roster.hidden = true;
@@ -1325,9 +1284,6 @@ function renderRoster() {
     if (total === 0) {
       el.peopleEmptyTitle.textContent = '还没有人员';
       el.peopleEmptyText.textContent = '先添加团队成员，再把他们拖到项目的岗位里。';
-    } else {
-      el.peopleEmptyTitle.textContent = '没有符合条件的人员';
-      el.peopleEmptyText.textContent = '试试清空搜索词，或把岗位筛选切回「全部岗位」。';
     }
   } else {
     el.peopleEmpty.hidden = true;
@@ -1771,7 +1727,7 @@ function personDialog(person) {
       '<div class="form-field" id="roleCustomWrap" hidden>' +
       '<label class="form-label" for="f_roleCustom">自定义岗位名<span class="req-mark" aria-hidden="true">*</span></label>' +
       '<input class="control" id="f_roleCustom" data-field="roleCustom" type="text" maxlength="' + ROLE_MAX + '" autocomplete="off" spellcheck="false" placeholder="例如：设计、运维" aria-required="true" aria-describedby="h_roleCustom e_roleCustom">' +
-      '<p class="form-hint" id="h_roleCustom">最多 ' + ROLE_MAX + ' 个字。创建后会一并出现在岗位下拉列表与人员筛选里。</p>' +
+      '<p class="form-hint" id="h_roleCustom">最多 ' + ROLE_MAX + ' 个字。创建后会一并出现在岗位下拉列表。</p>' +
       '<p class="field-error" id="e_roleCustom" hidden></p>' +
       '</div>' +
       '</div>',
@@ -2175,9 +2131,8 @@ function reseedData() {
       prevStatus = {};
       ui.selectedPersonId = null;
       ui.projectQuery = ''; ui.projectStatus = 'all';
-      ui.personQuery = ''; ui.personRole = 'all';
       el.projectQuery.value = ''; el.projectStatusFilter.value = 'all';
-      el.personQuery.value = ''; el.personSort.value = 'load-desc';
+      el.personSort.value = 'load-desc';
       ui.personSort = 'load-desc';
       save(); render();
       toast('success', '已恢复示例数据', state.projects.length + ' 个项目、' + state.people.length + ' 名人员已载入。');
@@ -2563,8 +2518,6 @@ function wireEvents() {
   });
   on(el.projectQuery, 'input', debounce(function () { ui.projectQuery = el.projectQuery.value; render(); }, 140));
   on(el.projectStatusFilter, 'change', function () { ui.projectStatus = el.projectStatusFilter.value; render(); });
-  on(el.personQuery, 'input', debounce(function () { ui.personQuery = el.personQuery.value; render(); }, 140));
-  on(el.personRoleFilter, 'change', function () { ui.personRole = el.personRoleFilter.value; render(); });
   on(el.personSort, 'change', function () { ui.personSort = el.personSort.value; render(); });
   on(el.projectGrid, 'change', onProjectNameChange);
   on(el.projectGrid, 'keydown', onProjectNameKeydown);

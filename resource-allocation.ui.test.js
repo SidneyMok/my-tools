@@ -230,6 +230,107 @@ test('Resource Allocation sorts by assignment load and applies threshold labels 
   });
 });
 
+test('Resource Allocation renders every person and keeps all four sort modes without filter controls', async () => {
+  const source = await readFile(path.join(root, 'resource-allocation.html'), 'utf8');
+  assert.doesNotMatch(source, /personQuery|personRoleFilter|ui\.personQuery|ui\.personRole\b|el\.personQuery|el\.personRoleFilter|搜索姓名|按姓名筛选|没有符合条件的人员|人员筛选/);
+  assert.doesNotMatch(source, /refreshRoleFilter|ui\.personQuery|ui\.personRole|el\.personQuery|el\.personRoleFilter/);
+  assert.doesNotMatch(source, /\.region-people \.field-wrap|\.region-people \.field-wrap input/);
+  assert.match(source, /id="personSort"/);
+  assert.match(source, /load-desc/);
+  assert.match(source, /load-asc/);
+  assert.match(source, /value="role"/);
+  assert.match(source, /value="name"/);
+
+  await withPage(async ({ page, url }) => {
+    const state = boardState(['p-alice', 'p-alice', 'p-bob']);
+    state.people.push({ id: 'p-delta', name: 'Zed', role: '测试' });
+    state.people.push({ id: 'p-echo', name: 'Aaron', role: '设计' });
+    await loadBoard(page, state);
+    await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
+    assert.equal(await page.locator('#personQuery').count(), 0);
+    assert.equal(await page.locator('#personRoleFilter').count(), 0);
+    assert.deepEqual(await page.locator('#personSort option').evaluateAll((options) => options.map((option) => option.value)), ['load-desc', 'load-asc', 'role', 'name']);
+    assert.equal(await page.locator('#personSort').inputValue(), 'load-desc');
+    assert.equal(await page.locator('#roster .person-card').count(), state.people.length);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
+    assert.deepEqual(await rosterOrder(page), ['p-alice', 'p-bob', 'p-echo', 'p-cara', 'p-delta']);
+
+    await page.locator('#personSort').selectOption('load-asc');
+    assert.deepEqual(await rosterOrder(page), ['p-echo', 'p-cara', 'p-delta', 'p-bob', 'p-alice']);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
+    await page.locator('#personSort').selectOption('role');
+    assert.deepEqual(await rosterOrder(page), ['p-bob', 'p-delta', 'p-cara', 'p-alice', 'p-echo']);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
+    await page.locator('#personSort').selectOption('name');
+    assert.deepEqual(await rosterOrder(page), ['p-echo', 'p-alice', 'p-bob', 'p-cara', 'p-delta']);
+    assert.equal(await page.locator('#peopleCount').textContent(), state.people.length + ' 人');
+
+    const beforeCollapse = await page.evaluate(() => ({
+      people: [...document.querySelectorAll('#roster .person-card')].map((card) => card.dataset.personId),
+      count: document.querySelector('#peopleCount').textContent,
+      rail: document.querySelector('.region-people').getBoundingClientRect().toJSON()
+    }));
+    await page.locator('#btnTogglePeople').click();
+    assert.equal(await page.locator('#app').getAttribute('data-people'), 'collapsed');
+    assert.equal(await page.locator('#btnTogglePeople').getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#people-body').isHidden(), true);
+    assert.equal(await page.locator('#roster').isHidden(), true);
+    const collapsedRail = await page.locator('.region-people').evaluate((people) => ({
+      visible: getComputedStyle(people).display !== 'none',
+      rect: people.getBoundingClientRect().toJSON()
+    }));
+    assert.equal(collapsedRail.visible, true);
+    assert.equal(collapsedRail.rect.width, 56);
+    assert.equal(collapsedRail.rect.height, beforeCollapse.rail.height);
+
+    await page.locator('#btnTogglePeople').click();
+    assert.equal(await page.locator('#app').getAttribute('data-people'), 'expanded');
+    assert.equal(await page.locator('#btnTogglePeople').getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('#roster').isHidden(), false);
+    assert.deepEqual(await rosterOrder(page), beforeCollapse.people);
+    assert.equal(await page.locator('#peopleCount').textContent(), beforeCollapse.count);
+    assert.equal(await page.locator('#personSort').inputValue(), 'name');
+  });
+});
+
+test('Resource Allocation gives the roster released header space and preserves the collapsed rail', async () => {
+  await withPage(async ({ page, url }) => {
+    const baseline = {
+      desktop: { peopleTop: 122.890625, rosterTop: 381.0625, rosterHeight: 518.9375 },
+      mobile: { peopleTop: 2724.03125, rosterTop: 2872.03125, rosterHeight: 300 }
+    };
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
+      const geometry = await page.evaluate(() => {
+        const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+        const people = box('.region-people');
+        const roster = box('#roster');
+        return { peopleTop: people.top, rosterTop: roster.top, rosterHeight: roster.height, scrollWidth: document.documentElement.scrollWidth };
+      });
+      const expected = viewport.width === 1440 ? baseline.desktop : baseline.mobile;
+      assert.ok(geometry.peopleTop <= expected.peopleTop, viewport.width + ': people panel moved up or stayed put');
+      assert.ok(geometry.rosterTop < expected.rosterTop, viewport.width + ': roster starts above baseline');
+      assert.ok(geometry.rosterHeight > expected.rosterHeight, viewport.width + ': roster is taller than baseline');
+      assert.equal(geometry.scrollWidth, viewport.width, viewport.width + ': no horizontal overflow');
+    }
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(url + '/resource-allocation.html', { waitUntil: 'networkidle' });
+    await page.locator('#btnTogglePeople').click();
+    const rail = await page.locator('.region-people').evaluate((people) => {
+      const region = people.getBoundingClientRect();
+      const head = people.querySelector('.region-head').getBoundingClientRect();
+      const label = people.querySelector('.people-rail-label').getBoundingClientRect();
+      return { width: region.width, height: region.height, headWidth: head.width, headHeight: head.height, label: label.toJSON() };
+    });
+    assert.equal(rail.width, 56);
+    assert.equal(rail.headWidth, 55);
+    assert.equal(rail.headHeight, rail.height);
+    assert.ok(rail.label.height > 0);
+  });
+});
+
 test('Resource Allocation persists and imports assignment-record load', async () => {
   await withPage(async ({ page, url }) => {
     await loadBoard(page, boardState([]));
